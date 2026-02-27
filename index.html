@@ -425,14 +425,14 @@ function connectToRoom(roomId) {
     // ゲーム開始 / アクション同期
     if(msg.type === 'sync'){
       G = msg.G;
-      // G.setupPhaseがあればsetup中、なければゲーム中
-      setupPhase = G.setupPhase || null;
+      // playerSetupsが残っていれば準備中
+      const inSetup = G.playerSetups && G.playerSetups.some(s=>!s.done);
+      setupPhase = inSetup ? true : null; // boolean flag only; actual state in G.playerSetups
       act = null;
       document.getElementById('titleOverlay').classList.add('hidden');
       document.getElementById('lobbyOverlay').classList.add('hidden');
-      // setupPhase中はcenterZone/actionPanelは非表示
-      document.getElementById('centerZone').style.display = setupPhase ? 'none' : '';
-      document.getElementById('actionPanel').style.display = setupPhase ? 'none' : '';
+      document.getElementById('centerZone').style.display = inSetup ? 'none' : '';
+      document.getElementById('actionPanel').style.display = inSetup ? 'none' : '';
       document.getElementById('phaseHint').style.display = '';
       document.getElementById('hdrPool').textContent = `ROOM: ${currentRoomId}`;
       render();
@@ -517,13 +517,16 @@ function hostStartGame(){
     revealTiles.sort((a,b)=>a.num-b.num);
     players.push({name:names[p],hand,revealTiles,revealTilesTotal:revealTiles.length,turns:0});
   }
+  // playerSetups: 全員同時に準備フェーズを進める
+  const playerSetups = players.map(()=>({
+    currentRevealIdx:0, selectedInHand:false, useRev:false, done:false
+  }));
   G = {
     players, currentPlayer:0,
     pool:nums.slice(idx).map(makeTile),
     discard:[], round:1, gameOver:false,
     handSize:HAND_BLIND+HAND_REVEAL,
-    // setupPhaseをGに内包して全員と同期
-    setupPhase:{playerIdx:0,currentRevealIdx:0,selectedInHand:false,useRev:false}
+    playerSetups,  // 全員分の準備状態
   };
   act = null;
 
@@ -539,8 +542,12 @@ function syncToServer(type='action'){
 // ════════════════════════════════════════════
 //  SOUND ENGINE (Web Audio API)
 // ════════════════════════════════════════════
-const AC = (()=>{try{return new (window.AudioContext||window.webkitAudioContext)();}catch(e){return null;}})();
+let AC = null; // 初回操作時に初期化（ブラウザのAutoplay Policy対策）
 let masterVolume = 0.7;
+function ensureAC(){
+  if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}
+  if(AC&&AC.state==='suspended') AC.resume();
+}
 
 function setVolume(v){
   masterVolume = parseFloat(v);
@@ -549,9 +556,8 @@ function setVolume(v){
 }
 
 function playSound(type){
+  ensureAC();
   if(!AC) return;
-  // iOS等でコンテキストが停止している場合に再開
-  if(AC.state==='suspended') AC.resume();
   const t = AC.currentTime;
 
   const sounds = {
@@ -672,53 +678,54 @@ function log(msg,cls=''){
 //  MASTER RENDER
 // ════════════════════════════════════════════
 function render(){
-  if(setupPhase){renderSetup();}else{renderGame();}
+  const inSetup=G&&G.playerSetups&&G.playerSetups.some(s=>!s.done);
+  if(inSetup){setupPhase=true;renderSetup();}else{setupPhase=null;renderGame();}
 }
 
 // ════════════════════════════════════════════
 //  SETUP PHASE
 // ════════════════════════════════════════════
 function renderSetup(){
-  const sp=setupPhase,cp=sp.playerIdx;
   document.getElementById('centerZone').style.display='none';
   document.getElementById('actionPanel').style.display='none';
   document.getElementById('phaseHint').style.display='';
   clearPlayerZones();
 
-  const player=G.players[cp];
-  // Current tile being placed (1-at-a-time)
-  const curTile=player.revealTiles[sp.currentRevealIdx];
-  const showGaps=sp.selectedInHand; // tile selected, waiting for gap click
+  // 自分のプレイヤーインデックスを特定
+  const myPi = myName ? G.players.findIndex(p=>p.name===myName) : 0;
 
-  G.players.forEach((player2,pi)=>{
-    const isActive=pi===cp,isDone=pi<cp;
-    const remaining=isActive?(player.revealTiles.length-sp.currentRevealIdx):0;
+  G.players.forEach((player,pi)=>{
+    const sp = G.playerSetups[pi];
+    const isMe = pi===myPi;
+    const isDone = sp.done;
     const div=document.createElement('div');
-    div.className=`player-zone${isActive?' active-player':''}`;
-    const badge=isActive
-      ?`<span class="badge badge-red">配置中 — ${sp.currentRevealIdx+1}枚目 / 5枚</span>`
-      :isDone?`<span class="badge badge-yellow">配置完了 ✓</span>`
-      :`<span class="badge badge-muted">待機中</span>`;
+    div.className=`player-zone${isMe?' active-player':''}`;
+
+    let badge;
+    if(isDone) badge=`<span class="badge badge-yellow">配置完了 ✓</span>`;
+    else if(isMe) badge=`<span class="badge badge-red">配置中 — ${sp.currentRevealIdx+1}枚目 / ${player.revealTilesTotal}枚</span>`;
+    else badge=`<span class="badge badge-muted">配置中…</span>`;
+
     div.innerHTML=`
-      <div class="player-header"><span class="player-name">${player2.name}</span>${badge}</div>
+      <div class="player-header"><span class="player-name">${player.name}</span>${badge}</div>
       <div class="tile-row" id="tileRow${pi}"></div>
-      ${isActive?`<div class="setup-panel">
+      ${isMe&&!isDone?`<div class="setup-panel">
         <div class="setup-panel-label">今配置するタイル（クリックして選択 → ↓スロットに差し込む）：</div>
         <div class="reveal-hand" id="revealHand${pi}"></div>
       </div>`:''}`;
     insertPlayerZone(div);
 
-    // Hand row with gap slots (active only when tile is selected)
+    // 手札表示（gap slotつき）
     const tileRow=div.querySelector(`#tileRow${pi}`);
-    const showG=isActive&&showGaps;
-    for(let i=0;i<=player2.hand.length;i++){
+    const showG=isMe&&!isDone&&sp.selectedInHand;
+    for(let i=0;i<=player.hand.length;i++){
       const g=document.createElement('div');
       g.className=`gap-slot${showG?' droppable':''}`;
       g.textContent=showG?'↓':'';
-      if(showG){const gi=i;g.onclick=()=>insertRevealTile(gi);}
+      if(showG){const gi=i;g.onclick=()=>insertRevealTile(pi,gi);}
       tileRow.appendChild(g);
-      if(i<player2.hand.length){
-        const h=player2.hand[i];
+      if(i<player.hand.length){
+        const h=player.hand[i];
         const el=document.createElement('div');
         el.className=`tile ${h.revealed?'face-up':'face-down'}`;
         el.textContent=h.revealed?h.tile.num:'';
@@ -726,71 +733,90 @@ function renderSetup(){
       }
     }
 
-    // Show only the current tile to place (with flip toggle)
-    if(isActive){
+    // 自分の操作パネル
+    if(isMe&&!isDone){
+      const curTile=player.revealTiles[sp.currentRevealIdx];
       const rh=div.querySelector(`#revealHand${pi}`);
-      const useRevSetup=setupPhase.useRev===true;
-      // ひっくり返し = rev値を数字として表示するだけ（CSS回転なし）
-      const displayNum=useRevSetup&&curTile.rev?curTile.rev:curTile.num;
+      const useRev=sp.useRev===true;
+      const displayNum=useRev&&curTile.rev?curTile.rev:curTile.num;
       const el=document.createElement('div');
-      el.className=`tile face-up to-place${showGaps?' src-selected':''}`;
+      el.className=`tile face-up to-place${sp.selectedInHand?' src-selected':''}`;
       el.textContent=displayNum;
       el.title=curTile.rev?`逆さで使用: ${curTile.rev}`:'';
-      el.onclick=()=>{ setupPhase.selectedInHand=!setupPhase.selectedInHand; G.setupPhase={...setupPhase}; syncToServer(); render(); };
+      el.onclick=()=>{ ensureAC(); sp.selectedInHand=!sp.selectedInHand; syncToServer(); render(); };
       rh.appendChild(el);
-      // ひっくり返すボタン
       if(curTile.rev){
         const fb=document.createElement('button');
         fb.className='flip-btn';fb.style.marginLeft='8px';
-        fb.textContent=useRevSetup?`⟳ 正向き (${curTile.num})`:`⟳ ひっくり返す (→${curTile.rev})`;
-        fb.onclick=(e)=>{e.stopPropagation();setupPhase.useRev=!setupPhase.useRev;G.setupPhase={...setupPhase};syncToServer();render();};
+        fb.textContent=useRev?`⟳ 正向き (${curTile.num})`:`⟳ ひっくり返す (→${curTile.rev})`;
+        fb.onclick=(e)=>{e.stopPropagation();ensureAC();sp.useRev=!sp.useRev;syncToServer();render();};
         rh.appendChild(fb);
       }
     }
   });
 
+  const myPl=G.players[myPi];
+  const mySp=G.playerSetups[myPi];
   const ph=document.getElementById('phaseHint');
-  ph.textContent=!showGaps
-    ?`📌 ${player.name}：オレンジのタイル [${curTile.num}] をクリックして選択してください。`
-    :`📌 [${curTile.num}] を選択中。手札の ↓ スロットをクリックして差し込んでください。`;
-
-  document.getElementById('hdrTurn').textContent=`SETUP — ${player.name}`;
-  document.getElementById('hdrRound').textContent=`配置 ${cp+1}/${G.players.length}人目 (${sp.currentRevealIdx+1}/5枚目)`;
+  if(mySp.done){
+    ph.textContent='✅ あなたの配置は完了。他のプレイヤーを待っています…';
+  }else{
+    const cur=myPl.revealTiles[mySp.currentRevealIdx];
+    ph.textContent=mySp.selectedInHand
+      ?`📌 [${mySp.useRev&&cur.rev?cur.rev:cur.num}] を選択中。↓ スロットをクリックして差し込んでください。`
+      :`📌 オレンジのタイル [${cur.num}] をクリックして選択してください。`;
+  }
+  const doneCount=G.playerSetups.filter(s=>s.done).length;
+  document.getElementById('hdrTurn').textContent='SETUP';
+  document.getElementById('hdrRound').textContent=`準備完了 ${doneCount}/${G.players.length}人`;
   document.getElementById('hdrPool').textContent=`POOL: ${G.pool.length}`;
 }
 
-function insertRevealTile(gapIdx){
-  const sp=setupPhase;
-  if(!sp||!sp.selectedInHand)return;
-  if(myName && G.players[sp.playerIdx].name !== myName)return;
-  const player=G.players[sp.playerIdx];
+function insertRevealTile(pi, gapIdx){
+  if(!G||!G.playerSetups)return;
+  const sp=G.playerSetups[pi];
+  if(!sp||!sp.selectedInHand||sp.done)return;
+  if(myName && G.players[pi].name !== myName)return;
+
+  const player=G.players[pi];
   const rawTile=player.revealTiles[sp.currentRevealIdx];
-  const useRevSetup=sp.useRev===true&&rawTile.rev!=null;
-  const tile=useRevSetup?{num:rawTile.rev,rev:rawTile.num}:rawTile;
+  const useRev=sp.useRev===true&&rawTile.rev!=null;
+  const tile=useRev?{num:rawTile.rev,rev:rawTile.num}:rawTile;
+
+  // ── 昇順チェック: gapの左右の表タイルと大小比較 ──
+  const hand=player.hand;
+  let L=-Infinity, R=Infinity;
+  for(let i=gapIdx-1;i>=0;i--){if(hand[i].revealed){L=hand[i].tile.num;break;}}
+  for(let i=gapIdx;i<hand.length;i++){if(hand[i].revealed){R=hand[i].tile.num;break;}}
+  if(tile.num<=L||tile.num>=R){
+    playSound('error');
+    log(`[${tile.num}] はここに置けません（昇順: ${L===- Infinity?'—':L} < ? < ${R===Infinity?'—':R}）`,'error');
+    return;
+  }
+
   player.hand.splice(gapIdx,0,{tile,revealed:true});
   sp.selectedInHand=false;
   sp.useRev=false;
+  playSound('place');
   log(`${player.name}: [${tile.num}] を位置 ${gapIdx+1} に挿入。`);
   sp.currentRevealIdx++;
   if(sp.currentRevealIdx>=player.revealTilesTotal){
     delete player.revealTiles;
+    sp.done=true;
     log(`${player.name} の配置完了！`,'highlight');
-    sp.playerIdx++;
-    sp.currentRevealIdx=0;
-    if(sp.playerIdx>=G.players.length){
-      // 全員配置完了 → setupPhase終了
-      setupPhase=null;
-      delete G.setupPhase;
-      G.currentPlayer=0;G.round=1;
-      document.getElementById('actionPanel').style.display='';
-      document.getElementById('centerZone').style.display='';
-      log('全員の配置完了！ゲームスタート！','highlight');
-      syncToServer();
-      render();return;
-    }
   }
-  // setupPhaseの変更をGに反映してsync
-  G.setupPhase = {...sp};
+
+  // 全員完了チェック
+  if(G.playerSetups.every(s=>s.done)){
+    delete G.playerSetups;
+    setupPhase=null;
+    G.currentPlayer=0;G.round=1;
+    document.getElementById('actionPanel').style.display='';
+    document.getElementById('centerZone').style.display='';
+    log('全員の配置完了！ゲームスタート！','highlight');
+    syncToServer();
+    render();return;
+  }
   syncToServer();
   render();
 }
@@ -812,8 +838,9 @@ function renderGame(){
     const blindCount=player.hand.filter(h=>!h.revealed).length;
     const pct=(revealed/G.handSize*100).toFixed(0);
     // 裏タイル移動可能条件: 裏タイル>=1枚 かつ アクション待機中でない
-    const canMoveBlind=isActive&&!act&&!G.gameOver&&blindCount>=1;
-    const canPass=isActive&&!act&&!G.gameOver;
+    const isMyTurn=isActive&&(!myName||G.players[pi].name===myName);
+    const canMoveBlind=isMyTurn&&!act&&!G.gameOver&&blindCount>=1;
+    const canPass=isMyTurn&&!act&&!G.gameOver;
     div.innerHTML=`
       <div class="player-header">
         <span class="player-name">${player.name}</span>
@@ -910,7 +937,8 @@ function renderGame(){
   const poolCountBadge=document.getElementById('poolCountBadge');
   poolGrid.innerHTML='';
   poolCountBadge.textContent=`${G.pool.length} 枚`;
-  const canDraw=!act&&!G.gameOver;
+  const isMyTurnNow=!myName||G.players[G.currentPlayer].name===myName;
+  const canDraw=isMyTurnNow&&!act&&!G.gameOver;
   G.pool.forEach((tile,pi2)=>{
     const el=document.createElement('div');
     el.className=`tile face-down${canDraw?' pool-tile':''}`;
@@ -928,7 +956,7 @@ function renderGame(){
     const realIdx=G.discard.length-1-di;
     const wrapper=document.createElement('div');
     wrapper.className='discard-entry';
-    const canTake=!act&&!G.gameOver;
+    const canTake=isMyTurnNow&&!act&&!G.gameOver;
     const tileEl=document.createElement('div');
     const showFace=entry.faceUp===true;
     // 表向きタイルが手札に置けるか確認
