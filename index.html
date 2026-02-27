@@ -227,6 +227,60 @@
   ::-webkit-scrollbar-track{background:var(--bg);}
   ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 
+  /* ── 置ける位置ハイライト ── */
+  .tile.can-place{
+    border-color:#3a8a5a !important;
+    box-shadow:0 0 8px rgba(58,180,100,0.35) !important;
+    cursor:pointer;
+  }
+  .tile.can-place:hover{
+    transform:translateY(-4px) !important;
+    box-shadow:0 6px 18px rgba(58,180,100,0.55) !important;
+    border-color:#5adc80 !important;
+  }
+  .tile.cannot-place{
+    opacity:0.3;
+    filter:grayscale(0.6);
+  }
+
+  /* ── 連番達成エフェクト ── */
+  @keyframes bonus-glow{
+    0%  {box-shadow:0 0 0 0 rgba(232,212,77,0.9);transform:translateY(-2px);}
+    40% {box-shadow:0 0 0 12px rgba(232,212,77,0);transform:translateY(-8px);}
+    60% {box-shadow:0 0 0 20px rgba(232,212,77,0);transform:translateY(-4px);}
+    100%{box-shadow:0 0 0 0 rgba(232,212,77,0);transform:translateY(0);}
+  }
+  .tile.bonus-flash{
+    animation:bonus-glow 0.7s ease forwards !important;
+    border-color:var(--accent) !important;
+    background:#fff8dc !important;
+    color:#000 !important;
+    z-index:10;
+  }
+
+  /* ── ターン移行バナー ── */
+  #turnBanner{
+    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.7);
+    background:rgba(13,13,13,0.93);border:2px solid var(--accent);
+    border-radius:8px;padding:18px 48px;z-index:300;
+    font-family:'Bebas Neue',cursive;font-size:2.2rem;letter-spacing:6px;
+    color:var(--accent);text-align:center;pointer-events:none;
+    opacity:0;transition:opacity 0.15s,transform 0.15s;
+  }
+  #turnBanner.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  #turnBanner small{display:block;font-family:'Roboto Mono',monospace;font-size:0.6rem;letter-spacing:3px;color:var(--muted);margin-top:4px;}
+
+  /* ── パーティクルコンテナ ── */
+  #particles{position:fixed;inset:0;pointer-events:none;z-index:290;overflow:hidden;}
+  .particle{
+    position:absolute;width:6px;height:6px;border-radius:50%;
+    animation:particle-fall linear forwards;
+  }
+  @keyframes particle-fall{
+    0%  {opacity:1;transform:translate(0,0) scale(1);}
+    100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(0.2);}
+  }
+
   /* ── LOBBY ── */
   .lobby-player{
     display:flex;align-items:center;gap:10px;
@@ -297,9 +351,15 @@
     <h1>COMPLETE!</h1>
     <div id="winMessage" class="subtitle"></div>
     <p id="winDesc"></p>
-    <button class="btn primary" onclick="location.reload()" style="width:100%;padding:14px;font-size:0.85rem;">PLAY AGAIN</button>
+    <button class="btn primary" id="btnRematch" onclick="rematch()" style="width:100%;padding:14px;font-size:0.85rem;margin-bottom:8px;">REMATCH →</button>
+    <button class="btn" onclick="location.reload()" style="width:100%;padding:10px;font-size:0.72rem;">退出してタイトルへ</button>
   </div>
 </div>
+
+<!-- ターン移行バナー -->
+<div id="turnBanner"><span id="turnBannerName">—</span><small>YOUR TURN</small></div>
+<!-- パーティクルコンテナ -->
+<div id="particles"></div>
 
 <header>
   <div class="logo">NUML<span>ETTO</span></div>
@@ -462,6 +522,7 @@ function connectToRoom(roomId) {
       if(myPi>=0 && !inSetup && !G.gameOver){
         if(prevPlayer !== G.currentPlayer && G.currentPlayer === myPi){
           playSound('myturn');
+          showTurnBanner(G.players[myPi].name);
         }
       }
 
@@ -638,7 +699,7 @@ function playSound(type){
         const osc=AC.createOscillator(); const g=AC.createGain();
         osc.type='sine'; osc.frequency.value=freq;
         const st=t+i*0.08;
-        g.gain.setValueAtTime(0,st); g.gain.linearRampToValueAtTime(0.18,st+0.02);
+        g.gain.setValueAtTime(0,st); g.gain.linearRampToValueAtTime(0.18*masterVolume,st+0.02);
         g.gain.linearRampToValueAtTime(0,st+0.1);
         osc.connect(g); g.connect(AC.destination); osc.start(st); osc.stop(st+0.12);
       });
@@ -671,7 +732,7 @@ function playSound(type){
         const osc=AC.createOscillator(); const g=AC.createGain();
         osc.type='square'; osc.frequency.value=freq;
         const st=t+times[i];
-        g.gain.setValueAtTime(0,st); g.gain.linearRampToValueAtTime(0.15,st+0.02);
+        g.gain.setValueAtTime(0,st); g.gain.linearRampToValueAtTime(0.15*masterVolume,st+0.02);
         g.gain.linearRampToValueAtTime(0,st+0.15);
         osc.connect(g); g.connect(AC.destination); osc.start(st); osc.stop(st+0.16);
       });
@@ -957,6 +1018,13 @@ function renderGame(){
         el.className=`tile ${h.revealed?'face-up':'face-down'}`;
         if(canSelect&&!h.revealed)el.classList.add('selectable');
         if(isSel)el.classList.add('selected');
+        // 置ける位置ハイライト（awaitSwap時・自分のターン）
+        if(isActive&&act&&act.phase==='awaitSwap'&&!h.revealed){
+          const drawn=act.drawnTile;
+          const fits=canFit(player.hand,hi,drawn.num)||(drawn.rev&&canFit(player.hand,hi,drawn.rev));
+          if(fits) el.classList.add('can-place');
+          else el.classList.add('cannot-place');
+        }
         el.textContent=h.revealed?h.tile.num:'';
         if(h.revealed&&h.tile.rev)el.title=`逆さ:${h.tile.rev}`;
         if(canSelect&&!h.revealed)el.onclick=()=>clickHandTile(pi,hi);
@@ -1165,8 +1233,14 @@ function clickHandTile(pi,hi){
     act=null;G.act=null;player.turns++;
     checkWin(G.currentPlayer);
     if(!G.gameOver){
-      if(bonus){playSound('bonus');log(`🎉 連番！${player.name} がもう1回！`,'highlight');}
-      else{playSound('place');nextTurn();}
+      if(bonus){
+        playSound('bonus');
+        log(`🎉 連番！${player.name} がもう1回！`,'highlight');
+        bonusEffect(pi,hi);
+      } else {
+        playSound('place');
+        nextTurn();
+      }
     }
     syncToServer();
     render();
@@ -1280,13 +1354,92 @@ function showWin(pi){
   const pl=G.players[pi];
   document.getElementById('winMessage').textContent=`— ${pl.name} WINS —`;
   document.getElementById('winDesc').textContent=`${pl.name} が先に全タイルを昇順で表向きにした！`;
+  // リマッチボタン：ホストのみ表示
+  const btnR=document.getElementById('btnRematch');
+  if(btnR) btnR.style.display=amIHost?'':'none';
   document.getElementById('winOverlay').classList.remove('hidden');
+  // 勝利パーティクル
+  setTimeout(()=>spawnParticles(window.innerWidth/2, window.innerHeight/3, 40),200);
+  setTimeout(()=>spawnParticles(window.innerWidth/3, window.innerHeight/2, 30),500);
+  setTimeout(()=>spawnParticles(window.innerWidth*2/3, window.innerHeight/2, 30),700);
+}
+
+// リマッチ：同じメンバーでホストが即再戦
+function rematch(){
+  if(!amIHost||!ws)return;
+  // 名前リストを保持したままhostStartGameを再実行
+  const names=G.players.map(p=>p.name);
+  const count=names.length;
+  const nums=shuffle([...Array(100)].map((_,i)=>i+1));
+  let idx=0;
+  const HAND_BLIND=getHandBlind(count);
+  const HAND_REVEAL=getHandReveal(count);
+  const players=[];
+  for(let p=0;p<count;p++){
+    const hand=nums.slice(idx,idx+HAND_BLIND).map(n=>({tile:makeTile(n),revealed:false}));
+    idx+=HAND_BLIND;
+    const revealTiles=nums.slice(idx,idx+HAND_REVEAL).map(makeTile);
+    idx+=HAND_REVEAL;
+    revealTiles.sort((a,b)=>a.num-b.num);
+    players.push({name:names[p],hand,revealTiles,revealTilesTotal:revealTiles.length,turns:0});
+  }
+  const playerSetups=players.map(()=>({currentRevealIdx:0,selectedInHand:false,useRev:false,done:false}));
+  act=null;
+  G={players,currentPlayer:0,pool:nums.slice(idx).map(makeTile),discard:[],round:1,gameOver:false,handSize:HAND_BLIND+HAND_REVEAL,playerSetups};
+  document.getElementById('winOverlay').classList.add('hidden');
+  ws.send(JSON.stringify({type:'start',G}));
 }
 function flashTile(pi,hi){
   const row=document.getElementById(`tileRow${pi}`);if(!row)return;
   const el=row.children[hi];if(!el)return;
   el.classList.add('invalid-flash');
   setTimeout(()=>el.classList.remove('invalid-flash'),400);
+}
+
+// 連番ボーナスエフェクト：タイル発光 + パーティクル
+function bonusEffect(pi, hi){
+  const row=document.getElementById(`tileRow${pi}`);
+  if(!row)return;
+  // 手札にgapSlotが混じるのでrealIndexを算出
+  const tiles=[...row.children].filter(el=>el.classList.contains('tile'));
+  const el=tiles[hi];
+  if(!el)return;
+  el.classList.add('bonus-flash');
+  setTimeout(()=>el.classList.remove('bonus-flash'),800);
+  // パーティクル
+  const rect=el.getBoundingClientRect();
+  spawnParticles(rect.left+rect.width/2, rect.top+rect.height/2, 18);
+}
+
+function spawnParticles(x, y, count){
+  const container=document.getElementById('particles');
+  const colors=['#e8d44d','#f0e060','#fff8a0','#e8b040','#ffffff'];
+  for(let i=0;i<count;i++){
+    const p=document.createElement('div');
+    p.className='particle';
+    const angle=Math.random()*Math.PI*2;
+    const dist=60+Math.random()*80;
+    const dx=Math.cos(angle)*dist;
+    const dy=Math.sin(angle)*dist - 40;
+    const dur=0.4+Math.random()*0.5;
+    p.style.cssText=`left:${x}px;top:${y}px;background:${colors[i%colors.length]};
+      --dx:${dx}px;--dy:${dy}px;animation-duration:${dur}s;
+      width:${4+Math.random()*5}px;height:${4+Math.random()*5}px;`;
+    container.appendChild(p);
+    setTimeout(()=>p.remove(), dur*1000+100);
+  }
+}
+
+// ターン移行バナー表示
+let turnBannerTimer=null;
+function showTurnBanner(name){
+  const banner=document.getElementById('turnBanner');
+  const nameEl=document.getElementById('turnBannerName');
+  if(!banner||!nameEl)return;
+  nameEl.textContent=name;
+  banner.classList.add('show');
+  if(turnBannerTimer)clearTimeout(turnBannerTimer);
+  turnBannerTimer=setTimeout(()=>banner.classList.remove('show'),1400);
 }
 
 // ── DOM HELPERS ──
