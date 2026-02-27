@@ -529,7 +529,7 @@
       style="width:100%;padding:12px;font-size:0.8rem;letter-spacing:2px;">ENTER ROOM</button>
     <p id="connectError" style="font-size:0.65rem;color:var(--accent2);margin-top:8px;min-height:16px;"></p>
     <div style="text-align:center;margin-top:12px;">
-      <span class="version-badge" onclick="openChangelog()">beta 2.0.0</span>
+      <span class="version-badge" onclick="openChangelog()">beta 2.0.1</span>
     </div>
   </div>
 </div>
@@ -587,6 +587,7 @@
   <div class="status-bar">
     <span id="hdrTurn" class="turn-indicator">SETUP</span>
     <span id="hdrRound">—</span>
+    <span id="hdrDir" style="font-size:0.58rem;color:var(--muted);letter-spacing:1px;" title="ターン方向"></span>
     <span id="hdrPool">POOL: —</span>
     <label style="display:flex;align-items:center;gap:6px;font-size:0.6rem;color:var(--muted);cursor:pointer;">
       <span id="volIcon" style="font-size:0.85rem;">🔊</span>
@@ -595,7 +596,7 @@
         style="width:64px;accent-color:var(--accent);cursor:pointer;">
     </label>
     <button class="btn" onclick="location.reload()" style="padding:3px 9px;font-size:0.62rem;">↺ NEW</button>
-    <span class="version-badge" onclick="openChangelog()" id="hdrVersion">beta 2.0.0</span>
+    <span class="version-badge" onclick="openChangelog()" id="hdrVersion">beta 2.0.1</span>
   </div>
 </header>
 
@@ -772,6 +773,7 @@ function connectToRoom(roomId) {
       } else {
         document.getElementById('resultOverlay').classList.add('hidden');
       }
+      checkEffectCardSync();
       render();
     }
 
@@ -880,7 +882,8 @@ function hostStartGame(){
     pool:nums.slice(idx).map(makeTile),
     discard:[], round:1, gameOver:false,
     handSize:HAND_BLIND+HAND_REVEAL,
-    playerSetups,  // 全員分の準備状態
+    playerSetups,
+    direction:1, // 1=正回転, -1=逆回転
   };
   act = null;
 
@@ -989,6 +992,30 @@ function playSound(type){
         osc.connect(g); g.connect(AC.destination);
         osc.start(t+delay); osc.stop(t+delay+0.26);
       });
+    },
+    kousoku: ()=>{
+      // 高速回転SE: 急上昇→急降下のピッチ＋ウィーン音
+      const osc=AC.createOscillator(); const g=AC.createGain();
+      osc.type='sawtooth';
+      osc.frequency.setValueAtTime(80,t);
+      osc.frequency.linearRampToValueAtTime(1600,t+0.18);
+      osc.frequency.linearRampToValueAtTime(80,t+0.36);
+      g.gain.setValueAtTime(0,t);
+      g.gain.linearRampToValueAtTime(0.18*masterVolume,t+0.05);
+      g.gain.linearRampToValueAtTime(0,t+0.4);
+      const lp=AC.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=2000;
+      osc.connect(lp); lp.connect(g); g.connect(AC.destination);
+      osc.start(t); osc.stop(t+0.42);
+      // 逆回転を示すピッチ降下音
+      const osc2=AC.createOscillator(); const g2=AC.createGain();
+      osc2.type='sine';
+      osc2.frequency.setValueAtTime(800,t+0.3);
+      osc2.frequency.linearRampToValueAtTime(200,t+0.7);
+      g2.gain.setValueAtTime(0,t+0.3);
+      g2.gain.linearRampToValueAtTime(0.12*masterVolume,t+0.35);
+      g2.gain.linearRampToValueAtTime(0,t+0.75);
+      osc2.connect(g2); g2.connect(AC.destination);
+      osc2.start(t+0.3); osc2.stop(t+0.76);
     },
     donguri: ()=>{
       // どんぐりころころSE: 重いドスン＋ひっくり返る感触
@@ -1491,6 +1518,8 @@ function renderGame(){
 
   document.getElementById('hdrTurn').textContent=G.gameOver?'GAME OVER':G.players[cp].name;
   document.getElementById('hdrRound').textContent=`ROUND ${G.round}`;
+  const dirEl=document.getElementById('hdrDir');
+  if(dirEl)dirEl.textContent=G.direction===-1?'↺ 逆回転':'↻';
   document.getElementById('hdrPool').textContent=`POOL: ${G.pool.length+G.discard.length}`;
 }
 
@@ -1583,6 +1612,7 @@ function clickHandTile(pi,hi){
     playSound('discard');
     G.discard.push({tile:removed.tile,discardedBy:player.name,faceUp:false,isNew:true});
     const bonus=isConsecutive(player.hand,hi);
+    const bonusLabel=bonus===2?'🎉🎉 ダブル連番！':'🎉 連番！';
     log(`${player.name}: [${useNum}] を配置。`,bonus?'highlight':'');
     act=null;G.act=null;player.turns++;
     // 達成進捗を記録（[ラウンド数, 達成枚数]）X軸=全員共通のラウンド
@@ -1591,15 +1621,15 @@ function clickHandTile(pi,hi){
     player.progressHistory.push([G.round, revealedNow]);
     checkWin(G.currentPlayer);
     if(!G.gameOver){
-      if(bonus){
+      if(bonus>0){
         playSound('bonus');
-        log(`🎉 連番！${player.name} が効果カードを引く！`,'highlight');
+        log(`${bonusLabel}${player.name} が効果カードを引く！${bonus===2?'（使用後もう1枚！）':''}`, 'highlight');
         bonusEffect(pi,hi);
-        act={phase:'awaitEffectCard',playerIdx:G.currentPlayer};
+        act={phase:'awaitEffectCard',playerIdx:G.currentPlayer,doubleBonus:bonus===2,usedFirst:false};
         G.act=act;
         syncToServer();
         drawEffectCard();
-        return; // syncToServerはdrawEffectCard内で行わない（既に上でsync済み）
+        return;
       } else {
         playSound('place');
         nextTurn();
@@ -1649,38 +1679,43 @@ const EFFECT_CARDS = [
     desc:'自分以外のプレイヤーを1人選択。\nそのプレイヤーのターンになる。',
     color:'#e070f0',
   },
+  {
+    id:'kousokukaiten',
+    name:'高速回転',
+    desc:'回転速度が速すぎて逆回転に見える（逆回転になる）',
+    color:'#ff6060',
+  },
 ];
 
 let drawnEffectCard = null; // 現在引いている効果カード
 
 function drawEffectCard(){
   if(!act||act.phase!=='awaitEffectCard')return;
-  // ランダムに1枚引く
-  drawnEffectCard = EFFECT_CARDS[Math.floor(Math.random()*EFFECT_CARDS.length)];
-  act.effectCard = drawnEffectCard.id;
-  G.act = act;
-  // 自分のターンだけモーダルを開く
   if(!myName||G.players[G.currentPlayer].name===myName){
+    // 自分がアクティブプレイヤー: カードを引いてsync
+    drawnEffectCard = EFFECT_CARDS[Math.floor(Math.random()*EFFECT_CARDS.length)];
+    act.effectCard = drawnEffectCard.id;
+    G.act = act;
+    syncToServer(); // 全員にカードidを配信
     openEffectCardModal(drawnEffectCard);
   }
+  // 他プレイヤーはsync受信時に openEffectCardFromSync() が呼ばれる
 }
 
 function openEffectCardModal(card){
-  const modal = document.getElementById('effectCardModal');
   const inner = document.getElementById('effectCardInner');
   document.getElementById('ecName').textContent = card.name;
   document.getElementById('ecName').style.color = card.color;
   document.getElementById('ecDesc').textContent = card.desc;
-  // ボタン生成
+  // 自動発動: タップして発動ボタンのみ
   document.getElementById('ecButtons').innerHTML = `
     <button class="ec-use-btn" style="border-color:${card.color};color:${card.color};background:${card.color}18;"
-      onclick="useEffectCard()">使用する</button>
-    <button class="ec-skip-btn" onclick="skipEffectCard()">スキップ（使わない）</button>
+      onclick="useEffectCard()">✦ 発動する</button>
   `;
   inner.classList.remove('reveal');
-  void inner.offsetWidth; // reflow
+  void inner.offsetWidth;
   inner.classList.add('reveal');
-  modal.classList.add('show');
+  document.getElementById('effectCardModal').classList.add('show');
   playSound('effectcard');
 }
 
@@ -1688,50 +1723,67 @@ function closeEffectCardModal(){
   document.getElementById('effectCardModal').classList.remove('show');
 }
 
+// ダブルボーナス: 1枚目使用後にもう1枚引く
+function afterEffectCardUsed(){
+  if(act&&act.doubleBonus&&!act.usedFirst){
+    // ダブルボーナス1枚目完了 → もう1枚
+    act.usedFirst=true;
+    act.phase='awaitEffectCard';
+    G.act=act;
+    log(`✨ ダブル連番ボーナス！もう1枚引く！`,'highlight');
+    syncToServer();
+    drawEffectCard();
+  } else {
+    act=null;G.act=null;
+    nextTurn();syncToServer();render();
+  }
+}
+
 function useEffectCard(){
   closeEffectCardModal();
   if(!drawnEffectCard)return;
   const id = drawnEffectCard.id;
   const cp = G.currentPlayer;
-  log(`✦ ${G.players[cp].name} が「${drawnEffectCard.name}」を使用！`,'highlight');
+  log(`✦ ${G.players[cp].name} が「${drawnEffectCard.name}」を発動！`,'highlight');
+  const card = drawnEffectCard;
+  drawnEffectCard=null;
   if(id==='mouikkai'){
-    // もう一回: ターンを進めずactをクリア
     act=null;G.act=null;
     log(`🔁 ${G.players[cp].name} のターンが続く！`,'highlight');
     syncToServer();render();
   } else if(id==='tobashi'){
-    // ひとつ飛ばし: 次プレイヤーをスキップ（2つ進む）
-    act=null;G.act=null;
-    const skipped=G.players[(cp+1)%G.players.length].name;
-    nextTurn(); nextTurn();
+    const skipped=G.players[(cp+1+G.players.length)%G.players.length].name;
     log(`⏭ ${skipped} をスキップ！`,'highlight');
+    act=null;G.act=null;
+    nextTurn(); nextTurn(); // 方向に関係なく2つ進む
     syncToServer();render();
+  } else if(id==='kousokukaiten'){
+    G.direction=(G.direction||1)*-1;
+    const dir=G.direction===1?'正回転':'逆回転';
+    log(`🌀 高速回転！ターン順が${dir}に！`,'highlight');
+    playSound('kousoku');
+    act=null;G.act=null;
+    nextTurn();syncToServer();render();
   } else if(id==='donguri'){
     act.phase='awaitDonguri';
     G.act=act;
     log(`🌰 どんぐりころころ — 裏返す表タイルを選んでください`,'highlight');
     syncToServer();render();
+    return; // afterEffectCardUsedはexecuteDonguri内で呼ぶ
   } else if(id==='ladyfirst'){
     act.phase='awaitLadyFirst';
     G.act=act;
     log(`💃 レディーファースト — ターンを渡すプレイヤーを選んでください`,'highlight');
     syncToServer();render();
+    return; // afterEffectCardUsedはexecuteLadyFirst内で呼ぶ
   }
-  drawnEffectCard=null;
-}
-
-function skipEffectCard(){
-  closeEffectCardModal();
-  drawnEffectCard=null;
-  act=null;G.act=null;
-  log(`${G.players[G.currentPlayer].name}: 効果カードをスキップ。ターン終了。`);
-  nextTurn();syncToServer();render();
+  // 即時完了する効果はここでダブルボーナス判定
+  afterEffectCardUsed();
 }
 
 function cancelEffect(){
   if(!act)return;
   if(act.phase==='awaitDonguri'||act.phase==='awaitLadyFirst'){
-    // キャンセル時はスキップ扱い
     act=null;G.act=null;
     nextTurn();syncToServer();render();
   }
@@ -1753,7 +1805,7 @@ function executeDonguri(targetPi, targetHi){
   playSound('donguri');
   log(`🌰 どんぐりころころ！${G.players[G.currentPlayer].name} が ${defender.name} の [${flipped.num}] を裏返した！`,'highlight');
   act=null;G.act=null;
-  nextTurn();syncToServer();render();
+  afterEffectCardUsed();syncToServer();render();
 }
 
 // レディーファースト: プレイヤー名で指名
@@ -1763,20 +1815,52 @@ function executeLadyFirst(targetName){
   const targetIdx=G.players.findIndex(p=>p.name===targetName);
   if(targetIdx<0){playSound('error');return;}
   act=null;G.act=null;
-  // currentPlayerを直接targetIdxに設定（nextTurnの代わり）
   G.currentPlayer=targetIdx;
-  // ラウンドカウントは回さない
   log(`💃 レディーファースト！${targetName} のターンへ！`,'highlight');
-  syncToServer();render();
+  // ダブルボーナス判定（レディーファーストはターン移動済みなのでnextTurnしない）
+  const _wasDouble=act&&act.doubleBonus&&!act.usedFirst;
+  if(_wasDouble){
+    act.usedFirst=true;
+    act.phase='awaitEffectCard';
+    G.act=act;
+    log(`✨ ダブル連番ボーナス！もう1枚引く！`,'highlight');
+    syncToServer();
+    drawEffectCard();
+  } else {
+    act=null;G.act=null;
+    syncToServer();render();
+  }
 }
 
-// sync受信時に効果カードモーダルを自動で開く（他のプレイヤーへの表示）
+// sync受信時: 効果カードモーダルを全員に表示
 function checkEffectCardSync(){
   if(!G||!G.act)return;
-  if(G.act.phase==='awaitEffectCard'){
-    // 自分のターンでなければモーダルは不要（ログのみ）
-    return;
+  if(G.act.phase==='awaitEffectCard'&&G.act.effectCard){
+    const isMe = !myName||G.players[G.currentPlayer].name===myName;
+    if(!isMe){
+      // 他プレイヤー: syncで受け取ったカードidでモーダル表示（自動クローズ）
+      const card = EFFECT_CARDS.find(c=>c.id===G.act.effectCard);
+      if(card) openEffectCardForSpectator(card);
+    }
+  } else {
+    closeEffectCardModal();
   }
+}
+
+function openEffectCardForSpectator(card){
+  const inner = document.getElementById('effectCardInner');
+  document.getElementById('ecName').textContent = card.name;
+  document.getElementById('ecName').style.color = card.color;
+  document.getElementById('ecDesc').textContent = card.desc;
+  document.getElementById('ecButtons').innerHTML =
+    `<div style="font-size:0.65rem;color:#555;text-align:center;letter-spacing:1px;">EFFECT ACTIVATING...</div>`;
+  inner.classList.remove('reveal');
+  void inner.offsetWidth;
+  inner.classList.add('reveal');
+  document.getElementById('effectCardModal').classList.add('show');
+  playSound('effectcard');
+  // 3秒後に自動クローズ
+  setTimeout(()=>closeEffectCardModal(), 3000);
 }
 
 function cannotPlace(){
@@ -1870,14 +1954,20 @@ function neighborStr(hand,hi){
   return`${L} と ${R}`;
 }
 function isConsecutive(hand,hi){
+  // 0=なし, 1=片側連番, 2=両サイド連番（ダブル）
   const cur=hand[hi].tile.num;
-  for(let i=hi-1;i>=0;i--)if(hand[i].revealed){if(Math.abs(hand[i].tile.num-cur)===1)return true;break;}
-  for(let i=hi+1;i<hand.length;i++)if(hand[i].revealed){if(Math.abs(hand[i].tile.num-cur)===1)return true;break;}
-  return false;
+  let left=false,right=false;
+  for(let i=hi-1;i>=0;i--)if(hand[i].revealed){if(Math.abs(hand[i].tile.num-cur)===1)left=true;break;}
+  for(let i=hi+1;i<hand.length;i++)if(hand[i].revealed){if(Math.abs(hand[i].tile.num-cur)===1)right=true;break;}
+  if(left&&right)return 2;
+  if(left||right)return 1;
+  return 0;
 }
 function nextTurn(){
-  G.currentPlayer=(G.currentPlayer+1)%G.players.length;
-  if(G.currentPlayer===0)G.round++;
+  const dir = G.direction||1; // 1=正回転, -1=逆回転
+  const n = G.players.length;
+  G.currentPlayer = (G.currentPlayer + dir + n) % n;
+  if(G.currentPlayer===0) G.round++;
 }
 function checkWin(pi){
   const pl=G.players[pi];
@@ -2067,7 +2157,7 @@ function rematch(){
   }
   const playerSetups=players.map(()=>({currentRevealIdx:0,selectedInHand:false,useRev:false,done:false}));
   act=null;
-  G={players,currentPlayer:0,pool:nums.slice(idx).map(makeTile),discard:[],round:1,gameOver:false,handSize:HAND_BLIND+HAND_REVEAL,playerSetups};
+  G={players,currentPlayer:0,pool:nums.slice(idx).map(makeTile),discard:[],round:1,gameOver:false,handSize:HAND_BLIND+HAND_REVEAL,playerSetups,direction:1};
   document.getElementById('resultOverlay').classList.add('hidden');
   ws.send(JSON.stringify({type:'start',G}));
 }
@@ -2136,9 +2226,21 @@ function insertPlayerZone(div){
 // ════════════════════════════════════════════
 //  VERSION & CHANGELOG
 // ════════════════════════════════════════════
-const CURRENT_VERSION = 'beta 2.0.0';
+const CURRENT_VERSION = 'beta 2.0.1';
 
 const CHANGELOG = [
+  {
+    version: 'beta 2.0.1',
+    date: '2026-02-27',
+    items: [
+      { text: '効果カードモーダルが全員に表示されるように', highlight: true },
+      { text: 'スキップ廃止: 効果カードは必ず発動', highlight: true },
+      { text: '両サイド連番（ダブル）で効果カードを2枚引ける', highlight: true },
+      { text: '高速回転: ターン順が逆回転になる効果カード追加', highlight: true },
+      { text: 'ヘッダーにターン方向インジケータ（↻ / ↺）追加' },
+      { text: '高速回転時のnextTurnが方向に対応' },
+    ]
+  },
   {
     version: 'beta 2.0.0',
     date: '2026-02-27',
