@@ -682,7 +682,7 @@ function playSound(type){
         const osc=AC.createOscillator(); const g=AC.createGain();
         osc.type='sine'; osc.frequency.value=freq;
         const st=t+delay;
-        g.gain.setValueAtTime(0,st); g.gain.linearRampToValueAtTime(0.2,st+0.015);
+        g.gain.setValueAtTime(0,st); g.gain.linearRampToValueAtTime(0.2*masterVolume,st+0.015);
         g.gain.linearRampToValueAtTime(0,st+0.1);
         osc.connect(g); g.connect(AC.destination); osc.start(st); osc.stop(st+0.11);
       });
