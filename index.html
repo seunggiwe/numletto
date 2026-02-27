@@ -253,6 +253,66 @@
   ::-webkit-scrollbar-track{background:var(--bg);}
   ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 
+  /* ── バージョンバッジ ── */
+  .version-badge{
+    font-family:'Roboto Mono',monospace;
+    font-size:0.58rem;letter-spacing:1px;
+    color:var(--muted);cursor:pointer;
+    border:1px solid var(--border);
+    border-radius:3px;padding:2px 7px;
+    transition:all 0.15s;
+    text-decoration:none;display:inline-block;
+  }
+  .version-badge:hover{border-color:var(--accent);color:var(--accent);}
+
+  /* ── チェンジログモーダル ── */
+  #changelogOverlay{
+    position:fixed;inset:0;background:rgba(0,0,0,0.88);
+    display:flex;align-items:center;justify-content:center;
+    z-index:500;backdrop-filter:blur(4px);
+    opacity:0;pointer-events:none;transition:opacity 0.18s;
+  }
+  #changelogOverlay.show{opacity:1;pointer-events:all;}
+  #changelogCard{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:8px;padding:32px 36px;
+    max-width:480px;width:92%;max-height:80vh;
+    overflow-y:auto;
+  }
+  #changelogCard h2{
+    font-family:'Bebas Neue',cursive;font-size:1.8rem;
+    letter-spacing:4px;color:var(--accent);margin-bottom:20px;
+  }
+  .cl-version{margin-bottom:22px;}
+  .cl-version-head{
+    display:flex;align-items:baseline;gap:10px;margin-bottom:8px;
+  }
+  .cl-ver-num{
+    font-family:'Bebas Neue',cursive;font-size:1.1rem;
+    letter-spacing:2px;color:var(--text);
+  }
+  .cl-ver-date{font-size:0.58rem;color:var(--muted);letter-spacing:1px;}
+  .cl-ver-current{
+    font-size:0.55rem;background:var(--accent);color:#000;
+    padding:1px 6px;border-radius:2px;font-weight:700;letter-spacing:1px;
+  }
+  .cl-items{list-style:none;display:flex;flex-direction:column;gap:5px;}
+  .cl-items li{
+    font-size:0.68rem;color:var(--muted);padding-left:14px;position:relative;line-height:1.6;
+  }
+  .cl-items li::before{content:'—';position:absolute;left:0;color:var(--border);}
+  .cl-items li.highlight{color:var(--text);}
+  .cl-items li.highlight::before{content:'✦';color:var(--accent);}
+  #changelogClose{
+    width:100%;margin-top:20px;
+    font-family:'Roboto Mono',monospace;font-size:0.68rem;
+    letter-spacing:2px;text-transform:uppercase;
+    padding:9px;border-radius:3px;
+    border:1px solid var(--border);cursor:pointer;
+    background:transparent;color:var(--muted);transition:all 0.15s;
+  }
+  #changelogClose:hover{border-color:var(--accent);color:var(--accent);}
+
   /* ── 置ける位置ハイライト ── */
   .tile.can-place{
     border-color:#3a8a5a !important;
@@ -351,6 +411,9 @@
     <button class="btn primary" id="btnConnect" onclick="connectAction()"
       style="width:100%;padding:12px;font-size:0.8rem;letter-spacing:2px;">ENTER ROOM</button>
     <p id="connectError" style="font-size:0.65rem;color:var(--accent2);margin-top:8px;min-height:16px;"></p>
+    <div style="text-align:center;margin-top:12px;">
+      <span class="version-badge" onclick="openChangelog()">v0.0.0</span>
+    </div>
   </div>
 </div>
 
@@ -384,6 +447,15 @@
 
 <!-- ターン移行バナー -->
 <div id="turnBanner"><span id="turnBannerName">—</span><small>YOUR TURN</small></div>
+
+<!-- チェンジログ -->
+<div id="changelogOverlay" onclick="if(event.target===this)closeChangelog()">
+  <div id="changelogCard">
+    <h2>CHANGELOG</h2>
+    <div id="changelogContent"></div>
+    <button id="changelogClose" onclick="closeChangelog()">CLOSE</button>
+  </div>
+</div>
 <!-- パーティクルコンテナ -->
 <div id="particles"></div>
 
@@ -400,6 +472,7 @@
         style="width:64px;accent-color:var(--accent);cursor:pointer;">
     </label>
     <button class="btn" onclick="location.reload()" style="padding:3px 9px;font-size:0.62rem;">↺ NEW</button>
+    <span class="version-badge" onclick="openChangelog()" id="hdrVersion">v0.0.0</span>
   </div>
 </header>
 
@@ -1513,6 +1586,124 @@ function insertPlayerZone(div){
   const gw=document.getElementById('gameWrap');
   gw.insertBefore(div,document.getElementById('centerZone'));
 }
+
+// ════════════════════════════════════════════
+//  VERSION & CHANGELOG
+// ════════════════════════════════════════════
+const CURRENT_VERSION = 'v1.7.0';
+
+const CHANGELOG = [
+  {
+    version: 'v1.7.0',
+    date: '2025-02',
+    items: [
+      { text: 'タイル差し込み・交換アニメーション追加', highlight: true },
+      { text: 'ロゴ配色変更（NUM黄 / LETTO赤）', highlight: true },
+      { text: 'プレイヤー順をゲーム開始時にランダムシャッフル', highlight: true },
+      { text: '達成率（%）表示を削除、枚数のみに整理' },
+    ]
+  },
+  {
+    version: 'v1.6.0',
+    date: '2025-02',
+    items: [
+      { text: '置ける位置をグリーンでハイライト表示', highlight: true },
+      { text: '連番達成時に発光＋パーティクルエフェクト', highlight: true },
+      { text: 'ターン開始時のバナー演出追加', highlight: true },
+      { text: 'リマッチ機能（同メンバーで即再戦）', highlight: true },
+      { text: '勝利時のパーティクル演出' },
+    ]
+  },
+  {
+    version: 'v1.5.0',
+    date: '2025-02',
+    items: [
+      { text: '他プレイヤーの操作SEを全員に配信', highlight: true },
+      { text: '自分のターン開始専用SE追加', highlight: true },
+      { text: 'WebSocket自動再接続（バックオフ付き）', highlight: true },
+      { text: 'Heartbeat pingでアイドル切断防止' },
+      { text: '再接続後のゲーム状態自動復元（resync）' },
+    ]
+  },
+  {
+    version: 'v1.4.0',
+    date: '2025-02',
+    items: [
+      { text: '準備フェーズを全員同時進行に変更', highlight: true },
+      { text: '準備フェーズの昇順チェック修正' },
+      { text: 'SE全般: masterVolumeで音量調整対応' },
+      { text: '他人のターンでの操作を表示レベルで無効化' },
+    ]
+  },
+  {
+    version: 'v1.3.0',
+    date: '2025-02',
+    items: [
+      { text: 'WebAudio SEエンジン追加（外部ファイル不要）', highlight: true },
+      { text: 'めくる・配置・連番・捨てる・エラー・勝利のSE' },
+      { text: '他人のタイル操作防止ガード' },
+    ]
+  },
+  {
+    version: 'v1.2.0',
+    date: '2025-02',
+    items: [
+      { text: 'G.actをサーバー経由で同期（めくり状態が全員に見える）', highlight: true },
+      { text: 'WebSocketエラー/クローズハンドラ整理' },
+    ]
+  },
+  {
+    version: 'v1.1.0',
+    date: '2025-02',
+    items: [
+      { text: 'オンライン専用マルチプレイヤー化（PartyKit）', highlight: true },
+      { text: 'ロビー/待合室システム', highlight: true },
+      { text: 'ホスト制御によるゲーム開始' },
+      { text: 'NUMERETTO → NUMLETTO に改名' },
+    ]
+  },
+  {
+    version: 'v1.0.0',
+    date: '2025-01',
+    items: [
+      { text: 'ローカルホットシート版リリース', highlight: true },
+      { text: '2〜6人対応、裏タイル・連番ボーナス・手番交代' },
+      { text: '反転タイル(1/6/8/9)、盲目スワップ、捨て場システム' },
+    ]
+  },
+];
+
+function openChangelog(){
+  const content = document.getElementById('changelogContent');
+  content.innerHTML = CHANGELOG.map((v,i) => `
+    <div class="cl-version">
+      <div class="cl-version-head">
+        <span class="cl-ver-num">${v.version}</span>
+        <span class="cl-ver-date">${v.date}</span>
+        ${i===0 ? '<span class="cl-ver-current">CURRENT</span>' : ''}
+      </div>
+      <ul class="cl-items">
+        ${v.items.map(item =>
+          `<li class="${item.highlight?'highlight':''}">${item.text}</li>`
+        ).join('')}
+      </ul>
+    </div>
+  `).join('');
+  document.getElementById('changelogOverlay').classList.add('show');
+}
+
+function closeChangelog(){
+  document.getElementById('changelogOverlay').classList.remove('show');
+}
+
+// バージョンバッジを最新バージョンで更新
+function initVersion(){
+  document.querySelectorAll('.version-badge, #hdrVersion').forEach(el => {
+    el.textContent = CURRENT_VERSION;
+  });
+}
+
+initVersion();
 </script>
 </body>
 </html>
