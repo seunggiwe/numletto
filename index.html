@@ -1746,8 +1746,7 @@ function clickHandTile(pi,hi){
         bonusEffect(pi,hi);
         act={phase:'awaitEffectCard',playerIdx:G.currentPlayer,doubleBonus:bonus===2,usedFirst:false};
         G.act=act;
-        syncToServer();
-        drawEffectCard();
+        drawEffectCard(); // drawEffectCard内でeffectCardsセット後にsyncToServer
         return;
       } else {
         playSound('place');
@@ -1901,7 +1900,6 @@ function afterEffectCardUsed(){
     act.phase='awaitEffectCard';
     G.act=act;
     log(`✨ ダブル連番ボーナス！もう1枚引く！`,'highlight');
-    syncToServer();
     drawEffectCard();
   } else if(act&&act.ikkaExtra){
     // 一か八か表: さらにもう1ターン継続
@@ -2135,10 +2133,10 @@ function executeLadyFirst(targetName){
 // sync受信時: 効果カードモーダルを全員に表示
 function checkEffectCardSync(){
   if(!G||!G.act)return;
-  if(G.act.phase==='awaitEffectCard'&&(G.act.effectCards||G.act.effectCard)){
+  if(G.act.phase==='awaitEffectCard'){
+    if(!(G.act.effectCards||G.act.effectCard)) return; // まだカード未決定
     const isMe = !myName||G.players[G.currentPlayer].name===myName;
     if(isMe) return; // 本人はdrawEffectCard()でモーダル済み
-    // 観戦者: 2枚候補を表示（選択不可）
     if(G.act.effectCards){
       const cards=G.act.effectCards.map(id=>EFFECT_CARDS.find(c=>c.id===id)).filter(Boolean);
       if(cards.length>0) openEffectCardForSpectator(cards[0],cards[1]);
@@ -2146,7 +2144,7 @@ function checkEffectCardSync(){
       const card=EFFECT_CARDS.find(c=>c.id===G.act.effectCard);
       if(card) openEffectCardForSpectator(card);
     }
-  } else {
+  } else if(!G.act||G.act.phase!=='awaitDonguri'&&G.act.phase!=='awaitLadyFirst'&&G.act.phase!=='awaitIkkaPool'){
     closeEffectCardModal();
   }
 }
