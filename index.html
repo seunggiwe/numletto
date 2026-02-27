@@ -116,6 +116,41 @@
   .tile.just-swapped-in{
     animation:tile-in 0.25s cubic-bezier(0.22,1,0.36,1) forwards;
   }
+  /* 萬國驚天掌ボタン */
+  .btn-sm.mankoku{
+    border-color:#c040e0;color:#c040e0;
+    background:rgba(192,64,224,0.06);
+    letter-spacing:0.3px;
+    animation:mankoku-pulse 1.4s ease infinite;
+  }
+  .btn-sm.mankoku:hover:not(:disabled){
+    background:rgba(192,64,224,0.18);border-color:#d870f8;color:#d870f8;
+  }
+  @keyframes mankoku-pulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(192,64,224,0.4);}
+    50%{box-shadow:0 0 8px 2px rgba(192,64,224,0.2);}
+  }
+  /* 萬國驚天掌: 対象タイル選択ハイライト */
+  .tile.mankoku-target{
+    border-color:#c040e0 !important;
+    box-shadow:0 0 10px rgba(192,64,224,0.6) !important;
+    cursor:crosshair !important;
+    animation:mankoku-target-pulse 0.8s ease infinite;
+  }
+  @keyframes mankoku-target-pulse{
+    0%,100%{box-shadow:0 0 6px 1px rgba(192,64,224,0.5);}
+    50%{box-shadow:0 0 18px 4px rgba(192,64,224,0.3);}
+  }
+  /* 萬國驚天掌発動エフェクト */
+  @keyframes mankoku-hit{
+    0%  {filter:brightness(1) saturate(1);}
+    20% {filter:brightness(2.5) saturate(0) hue-rotate(270deg);}
+    60% {filter:brightness(1.5) saturate(2) hue-rotate(180deg);}
+    100%{filter:brightness(1) saturate(1);}
+  }
+  .tile.mankoku-hit{
+    animation:mankoku-hit 0.6s ease forwards !important;
+  }
   /* 連番隣接スロット — 差し込み禁止 */
   .gap-slot.blocked{
     width:8px;cursor:not-allowed;
@@ -791,21 +826,25 @@ function playSound(type){
 
   const sounds = {
     draw: ()=>{
-      // カードをめくる音: 柔らかいウッドブロック風
-      // ローパスフィルタ済みノイズ（紙をめくる感触）
-      const buf = AC.createBuffer(1, AC.sampleRate*0.12, AC.sampleRate);
+      // カードをめくる音: 極めてソフトなタッチ音
+      // 超低ゲインのホワイトノイズ（紙の質感、割れなし）
+      const buf = AC.createBuffer(1, AC.sampleRate*0.15, AC.sampleRate);
       const d = buf.getChannelData(0);
-      for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,3)*0.6;
+      for(let i=0;i<d.length;i++){
+        const env = Math.pow(1 - i/d.length, 4);
+        d[i] = (Math.random()*2-1) * env * 0.3;
+      }
       const src = AC.createBufferSource(); src.buffer=buf;
-      const filt = AC.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=1200;
-      const g = AC.createGain(); g.gain.setValueAtTime(0.15*masterVolume,t); g.gain.linearRampToValueAtTime(0,t+0.12);
-      src.connect(filt); filt.connect(g); g.connect(AC.destination); src.start(t);
-      // 柔らかい低めのトーン（300Hz台、三角波でまろやか）
+      const lp = AC.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=800; lp.Q.value=0.5;
+      const g = AC.createGain(); g.gain.setValueAtTime(0.07*masterVolume, t);
+      src.connect(lp); lp.connect(g); g.connect(AC.destination); src.start(t);
+      // 柔らかいサイン波の小さなぽん音（220Hz、超短め）
       const osc = AC.createOscillator(); const og = AC.createGain();
-      osc.type='triangle'; osc.frequency.setValueAtTime(380,t); osc.frequency.linearRampToValueAtTime(320,t+0.14);
-      og.gain.setValueAtTime(0,t); og.gain.linearRampToValueAtTime(0.1*masterVolume,t+0.02);
-      og.gain.linearRampToValueAtTime(0,t+0.16);
-      osc.connect(og); og.connect(AC.destination); osc.start(t); osc.stop(t+0.17);
+      osc.type='sine'; osc.frequency.value=260;
+      og.gain.setValueAtTime(0,t);
+      og.gain.linearRampToValueAtTime(0.06*masterVolume, t+0.015);
+      og.gain.exponentialRampToValueAtTime(0.001, t+0.12);
+      osc.connect(og); og.connect(AC.destination); osc.start(t); osc.stop(t+0.13);
     },
     place: ()=>{
       // タイルを置く音: コツッという打撃音
@@ -845,6 +884,29 @@ function playSound(type){
         g.gain.setValueAtTime(0.15*masterVolume,st); g.gain.linearRampToValueAtTime(0,st+0.08);
         osc.connect(g); g.connect(AC.destination); osc.start(st); osc.stop(st+0.09);
       });
+    },
+    mankoku: ()=>{
+      // 萬國驚天掌SE: 低いうなり音＋衝撃
+      [0, 0.06, 0.14].forEach((delay, i) => {
+        const osc=AC.createOscillator(); const g=AC.createGain();
+        osc.type='sawtooth';
+        osc.frequency.setValueAtTime(120-i*20, t+delay);
+        osc.frequency.linearRampToValueAtTime(60-i*10, t+delay+0.18);
+        g.gain.setValueAtTime(0, t+delay);
+        g.gain.linearRampToValueAtTime(0.13*masterVolume, t+delay+0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, t+delay+0.2);
+        const lp=AC.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=600;
+        osc.connect(lp); lp.connect(g); g.connect(AC.destination);
+        osc.start(t+delay); osc.stop(t+delay+0.22);
+      });
+      // 衝撃ノイズ
+      const buf=AC.createBuffer(1,AC.sampleRate*0.08,AC.sampleRate);
+      const d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2)*0.5;
+      const src=AC.createBufferSource(); src.buffer=buf;
+      const g2=AC.createGain(); g2.gain.setValueAtTime(0.15*masterVolume,t);
+      const hp=AC.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=200;
+      src.connect(hp); hp.connect(g2); g2.connect(AC.destination); src.start(t);
     },
     win: ()=>{
       // 勝利: ファンファーレ
@@ -1103,6 +1165,20 @@ function renderGame(){
             <button class="btn-sm accent" onclick="cancelAction()">キャンセル</button>
           </div>`;
         }
+        const canMankoku=isMyTurn&&act&&act.phase==='awaitMankoku';
+        const hasBonusReady=isMyTurn&&act&&act.phase==='awaitBonus';
+        if(hasBonusReady){
+          return `<div class="player-action-bar">
+            <button class="btn-sm" onclick="bonusContinue()">🎲 そのままもう1回</button>
+            <button class="btn-sm mankoku" onclick="startMankoku()">☯ 萬國驚天掌</button>
+          </div>`;
+        }
+        if(canMankoku){
+          return `<div class="player-action-bar">
+            <button class="btn-sm accent" onclick="cancelMankoku()">キャンセル</button>
+            <span style="font-size:0.6rem;color:#c040e0;letter-spacing:1px;">相手の表タイルを選択</span>
+          </div>`;
+        }
         return `<div class="player-action-bar">
           <button class="btn-sm" onclick="startMoveBlind()" ${canMoveBlind?'':'disabled'}>裏タイル移動</button>
           <button class="btn-sm" onclick="passAction()" ${canPass?'':'disabled'}>パス</button>
@@ -1165,6 +1241,12 @@ function renderGame(){
         if(insertAnim && insertAnim.pi===pi && insertAnim.hi===hi){
           el.classList.add('just-inserted');
           insertAnim=null;
+        }
+        // 萬國驚天掌: 対象タイルをハイライト
+        if(act&&act.phase==='awaitMankoku'&&h.revealed&&pi!==G.currentPlayer){
+          el.classList.add('mankoku-target');
+          const _pi=pi,_hi=hi;
+          el.onclick=()=>executeMankoku(_pi,_hi);
         }
         tileRow.appendChild(el);
       });
@@ -1276,6 +1358,12 @@ function renderGame(){
     }else if(act.phase==='awaitMoveInsert'){
       hint.textContent='差し込む位置の ↓ をクリック（赤ハッチは連番隣接のためNG）';
       ph.textContent='';
+    }else if(act.phase==='awaitBonus'){
+      hint.textContent=`${G.players[cp].name}: 連番ボーナス — 行動を選んでください`;
+      ph.textContent=act.hasMankoku?'💡 萬國驚天掌で相手の表タイルを山札に戻せます':'💡 相手に表タイルがないため萬國驚天掌は使えません';
+    }else if(act.phase==='awaitMankoku'){
+      hint.textContent='☯ 萬國驚天掌 — 相手の光るタイルをクリックして選択';
+      ph.textContent='💡 選んだタイルが山札に戻り、ランダムな裏タイルと交換されます';
     }
   }else{
     hint.textContent='ゲーム終了';ph.textContent='';
@@ -1301,8 +1389,15 @@ function flipDrawnTile(){
 function passAction(){
   if(!G||setupPhase||act||G.gameOver)return;
   if(myName && G.players[G.currentPlayer].name !== myName)return;
+  const cp=G.currentPlayer;
+  // グラフ用進捗記録（パス時も点を打つ）
+  const _plPass=G.players[cp];
+  if(_plPass&&_plPass.progressHistory){
+    const _rv=_plPass.hand.filter(h=>h.revealed).length;
+    _plPass.progressHistory.push([G.round,_rv]);
+  }
   playSound('discard');
-  log(`${G.players[G.currentPlayer].name}: パスした。`);
+  log(`${G.players[cp].name}: パスした。`);
   nextTurn();syncToServer();render();
 }
 
@@ -1378,8 +1473,12 @@ function clickHandTile(pi,hi){
     if(!G.gameOver){
       if(bonus){
         playSound('bonus');
-        log(`🎉 連番！${player.name} がもう1回！`,'highlight');
+        log(`🎉 連番！${player.name} がもう1回！— 萬國驚天掌 or そのままもう1回`,'highlight');
         bonusEffect(pi,hi);
+        // 相手に表タイルがあれば萬國驚天掌を選べる
+        const hasTarget=G.players.some((p,i)=>i!==G.currentPlayer&&p.hand.some(h=>h.revealed));
+        act={phase:'awaitBonus',playerIdx:G.currentPlayer,hasMankoku:hasTarget};
+        G.act=act;
       } else {
         playSound('place');
         nextTurn();
@@ -1395,6 +1494,60 @@ function clickHandTile(pi,hi){
   }
 }
 
+// ══════════════════════════════════════════════
+//  萬國驚天掌（マンコクキョウテンショウ）
+// ══════════════════════════════════════════════
+function bonusContinue(){
+  if(!act||act.phase!=='awaitBonus')return;
+  if(myName&&G.players[G.currentPlayer].name!==myName)return;
+  act=null;G.act=null;
+  log(`${G.players[G.currentPlayer].name}: そのままもう1回！`);
+  syncToServer();render();
+}
+
+function startMankoku(){
+  if(!act||act.phase!=='awaitBonus')return;
+  if(myName&&G.players[G.currentPlayer].name!==myName)return;
+  if(!act.hasMankoku){playSound('error');return;}
+  act.phase='awaitMankoku';
+  G.act=act;
+  log(`${G.players[G.currentPlayer].name}: ☯ 萬國驚天掌 — 相手の表タイルを選べ！`,'highlight');
+  syncToServer();render();
+}
+
+function cancelMankoku(){
+  if(!act||act.phase!=='awaitMankoku')return;
+  if(myName&&G.players[G.currentPlayer].name!==myName)return;
+  act.phase='awaitBonus';
+  G.act=act;
+  syncToServer();render();
+}
+
+function executeMankoku(targetPi, targetHi){
+  if(!act||act.phase!=='awaitMankoku')return;
+  if(myName&&G.players[G.currentPlayer].name!==myName)return;
+  const attacker=G.players[G.currentPlayer];
+  const defender=G.players[targetPi];
+  if(!defender.hand[targetHi]||!defender.hand[targetHi].revealed){
+    playSound('error');return;
+  }
+  // 対象タイルを山札に戻す
+  const stolen=defender.hand[targetHi].tile;
+  G.pool.push(stolen);
+  // 山札をシャッフルして先頭から1枚を裏タイルとして差し込む
+  G.pool=shuffle(G.pool);
+  const newBlind=G.pool.splice(0,1)[0];
+  defender.hand[targetHi]={tile:newBlind,revealed:false};
+  // エフェクト用にアニメフラグ
+  swapAnim={pi:targetPi,hi:targetHi};
+  // SE: 低いホラー音
+  playSound('mankoku');
+  log(`☯ 萬國驚天掌！${attacker.name} が ${defender.name} の [${stolen.num}] を山札に戻した！`,'highlight');
+  act=null;G.act=null;
+  // 萬國驚天掌後はターン終了
+  nextTurn();syncToServer();render();
+}
+
 function cannotPlace(){
   if(!act||act.phase!=='awaitSwap')return;
   if(myName && G.players[G.currentPlayer].name !== myName)return;
@@ -1403,6 +1556,12 @@ function cannotPlace(){
   G.discard.push({tile:act.drawnTile,discardedBy:G.players[G.currentPlayer].name,faceUp:true,isNew:true});
   playSound('discard');
   log(`${G.players[G.currentPlayer].name}: [${act.drawnTile.num}] は置けず → 表向きで捨て場へ。`,'error');
+  // グラフ用進捗記録（置けなかった時も点を打つ）
+  const _plCnt=G.players[G.currentPlayer];
+  if(_plCnt&&_plCnt.progressHistory){
+    const _rv=_plCnt.hand.filter(h=>h.revealed).length;
+    _plCnt.progressHistory.push([G.round,_rv]);
+  }
   act=null;G.act=null;nextTurn();syncToServer();render();
 }
 
@@ -1456,6 +1615,11 @@ function doMoveInsert(gapIdx){
   const newPos=gapIdx+1;
   insertAnim={pi:G.currentPlayer, hi:gapIdx};
   log(`${player.name}: 裏タイルを位置${from+1}から位置${newPos}へ差し込んだ。`);
+  // グラフ用進捗記録（裏タイル移動時も点を打つ）
+  if(player.progressHistory){
+    const _rv=player.hand.filter(h=>h.revealed).length;
+    player.progressHistory.push([G.round,_rv]);
+  }
   act=null;G.act=null;nextTurn();syncToServer();render();
 }
 
@@ -1741,9 +1905,18 @@ function insertPlayerZone(div){
 // ════════════════════════════════════════════
 //  VERSION & CHANGELOG
 // ════════════════════════════════════════════
-const CURRENT_VERSION = 'beta 1.8.1';
+const CURRENT_VERSION = 'beta 1.8.2';
 
 const CHANGELOG = [
+  {
+    version: 'beta 1.8.2',
+    date: '2026-02-27',
+    items: [
+      { text: '萬國驚天掌：連番達成時に相手の表タイルを山札に戻す妨害アクション（使用後ターン終了）', highlight: true },
+      { text: 'グラフ改善：パス・置けない・裏タイル移動時も進捗点を記録', highlight: true },
+      { text: 'ドロー音を極めてソフトな音に再調整', highlight: true },
+    ]
+  },
   {
     version: 'beta 1.8.1',
     date: '2026-02-27',
