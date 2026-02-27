@@ -987,8 +987,18 @@ function connectToRoom(roomId) {
         const isMe = !myName||G.players[G.currentPlayer].name===myName;
         if(!isMe){
           const modal=document.getElementById('effectCardModal');
-          if(!modal.classList.contains('show')){
+          // prevActがawaitCoinFlipでなければ新規表示
+          if(!modal.classList.contains('show')||!prevAct||prevAct.phase!=='awaitCoinFlip'){
             showCoinFlip(G.act.coinResult==='heads');
+          }
+        }
+      } else if(G.act&&G.act.phase==='awaitDiscardBlind'){
+        // コイン表→裏タイル捨てフェーズ: 観戦者のコインモーダルを閉じる
+        const isMe = !myName||(G.players[G.currentPlayer]&&G.players[G.currentPlayer].name===myName);
+        if(!isMe){
+          const modal=document.getElementById('effectCardModal');
+          if(modal.classList.contains('show')&&document.getElementById('coinFlipDisplay')){
+            closeEffectCardModal();
           }
         }
       } else if(!G.act||G.act.phase!=='awaitCoinFlip'){
@@ -1575,8 +1585,7 @@ function renderGame(){
         }
         if(act&&act.phase==='awaitDonguri'&&isMyTurn){
           return `<div class="player-action-bar">
-            <button class="btn-sm accent" onclick="cancelEffect()">キャンセル</button>
-            <span style="font-size:0.6rem;color:#f0a030;letter-spacing:1px;">表タイルを選択</span>
+            <span style="font-size:0.6rem;color:#f0a030;letter-spacing:1px;">🌰 裏返すタイルを選択</span>
           </div>`;
         }
         if(act&&act.phase==='awaitDiscardBlind'&&isMyTurn){
@@ -1681,11 +1690,19 @@ function renderGame(){
           el.classList.add('just-inserted');
           insertAnim=null;
         }
-        // どんぐりころころ: 全員の表タイルをハイライト（自分含む）
+        // どんぐりころころ
         if(act&&act.phase==='awaitDonguri'&&h.revealed){
           el.classList.add('donguri-target');
           const _pi=pi,_hi=hi;
           el.onclick=()=>executeDonguri(_pi,_hi);
+        }
+        // awaitDiscardBlind: 自分の裏タイルをクリック可能に
+        if(act&&act.phase==='awaitDiscardBlind'&&!h.revealed&&pi===G.currentPlayer&&(!myName||G.players[G.currentPlayer].name===myName)){
+          el.style.borderColor='#ffd700';
+          el.style.boxShadow='0 0 14px rgba(255,215,0,0.8)';
+          el.style.cursor='pointer';
+          const _hi=hi;
+          el.onclick=()=>discardBlindTile(_hi);
         }
         tileRow.appendChild(el);
       });
@@ -2268,7 +2285,7 @@ function useEffectCard(){
 
 function cancelEffect(){
   if(!act)return;
-  if(act.phase==='awaitDonguri'||act.phase==='awaitLadyFirst'||act.phase==='awaitIkkaPool'){
+  if(act.phase==='awaitLadyFirst'||act.phase==='awaitIkkaPool'){
     act=null;G.act=null;
     nextTurn();syncToServer();render();
   }
@@ -2436,22 +2453,31 @@ function executeDonguri(targetPi, targetHi){
     playSound('error');return;
   }
   const flipped=defender.hand[targetHi].tile;
-  // フェーズ1: ハイライト+拡大 (350ms)
-  act.donguriTarget={pi:targetPi,hi:targetHi,num:flipped.num};
-  act.donguriPhase='highlight';
-  G.act=act;
-  syncToServer();
-  render(); // donguri-selectedが付く
+
+  // フェーズ1: DOMに直接donguri-selectedを付与（syncなし）
+  const tileRow=document.getElementById('tileRow'+targetPi);
+  if(tileRow){
+    const tiles=tileRow.querySelectorAll('.tile.face-up');
+    let count=0;
+    for(let i=0;i<tileRow.children.length;i++){
+      const el=tileRow.children[i];
+      if(el.classList.contains('tile')&&el.classList.contains('face-up')){
+        if(count===targetHi){ el.classList.add('donguri-selected'); break; }
+        count++;
+      }
+    }
+  }
   playSound('effectcard');
+
   setTimeout(()=>{
-    // フェーズ2: 裏返しアニメ
+    // フェーズ2: 手札変更してアニメ付きでrender、このタイミングでsync
     defender.hand[targetHi]={tile:flipped,revealed:false};
-    act.donguriPhase='flip';
+    act.donguriTarget={pi:targetPi,hi:targetHi,num:flipped.num};
     G.act=act;
-    syncToServer();
+    syncToServer(); // 手札変更済みの状態をsync
     donguriAnim={pi:targetPi,hi:targetHi};
     playSound('donguri');
-    log(`🌰 どんぐりころころ！${G.players[G.currentPlayer].name} が ${defender.name} の [${flipped.num}] を裏返した！`,'highlight');
+    log(\`🌰 どんぐりころころ！\${G.players[G.currentPlayer].name} が \${defender.name} の [\${flipped.num}] を裏返した！\`,'highlight');
     render();
     setTimeout(()=>{
       act=null;G.act=null;
@@ -2495,6 +2521,7 @@ function checkEffectCardSync(){
     const isMe = !myName||G.players[G.currentPlayer].name===myName;
     if(!isMe){
       const {pi,hi}=G.act.donguriTarget;
+      // 観戦者: まだdonguriAnimがなければアニメ開始
       if(!donguriAnim){
         donguriAnim={pi,hi};
         playSound('donguri');
