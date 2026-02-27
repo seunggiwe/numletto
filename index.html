@@ -629,7 +629,7 @@
       style="width:100%;padding:12px;font-size:0.8rem;letter-spacing:2px;">ENTER ROOM</button>
     <p id="connectError" style="font-size:0.65rem;color:var(--accent2);margin-top:8px;min-height:16px;"></p>
     <div style="text-align:center;margin-top:12px;">
-      <span class="version-badge" onclick="openChangelog()">beta 2.0.3</span>
+      <span class="version-badge" onclick="openChangelog()">beta 2.0.4</span>
     </div>
   </div>
 </div>
@@ -701,7 +701,7 @@
         style="width:64px;accent-color:var(--accent);cursor:pointer;">
     </label>
     <button class="btn" onclick="location.reload()" style="padding:3px 9px;font-size:0.62rem;">↺ NEW</button>
-    <span class="version-badge" onclick="openChangelog()" id="hdrVersion">beta 2.0.3</span>
+    <span class="version-badge" onclick="openChangelog()" id="hdrVersion">beta 2.0.4</span>
   </div>
 </header>
 
@@ -1996,7 +1996,14 @@ function useEffectCard(){
   drawnEffectCard=null;
   if(id==='mouikkai'){
     log(`🔁 ${G.players[cp].name} のターンが続く！`,'highlight');
-    afterEffectCardUsed();
+    if(act&&act.doubleBonus&&!act.usedFirst){
+      // ダブルボーナス中→2枚目を引く
+      afterEffectCardUsed();
+    } else {
+      // 通常→ターン継続（nextTurnしない）
+      act=null;G.act=null;
+      syncToServer();render();
+    }
     return;
   } else if(id==='tobashi'){
     const skipped=G.players[(cp+1+G.players.length)%G.players.length].name;
@@ -2060,7 +2067,10 @@ function cancelEffect(){
 // 一か八か: コインフリップ表示
 function showCoinFlip(heads){
   const card = EFFECT_CARDS.find(c=>c.id==='ichikabachika');
+  // 2択UIを隠して単体表示
+  document.getElementById('ecChoiceContainer').style.display='none';
   const inner = document.getElementById('effectCardInner');
+  inner.style.display='block';
   document.getElementById('ecName').textContent = card.name;
   document.getElementById('ecName').style.color = card.color;
   // コイン表示エリアを差し込む
@@ -2207,6 +2217,8 @@ function executeLadyFirst(targetName){
 function checkEffectCardSync(){
   if(!G||!G.act)return;
   const effectPhases=['awaitEffectCard','awaitDonguri','awaitLadyFirst','awaitIkkaPool'];
+  // モーダルが選択アニメ中(closing)なら何もしない
+  if(document.getElementById('effectCardModal').classList.contains('closing')) return;
   if(G.act.phase==='awaitEffectCard'){
     if(!(G.act.effectCards||G.act.effectCard)) return; // まだカード未決定
     const isMe = !myName||G.players[G.currentPlayer].name===myName;
@@ -2228,12 +2240,11 @@ function checkEffectCardSync(){
         const modal=document.getElementById('effectCardModal');
         // 選択済みでアニメ未再生なら選択アニメを実行
         if(G.act.selectedCardIdx!=null){
+          // 選択済み: アニメ中でなければアニメを再生
           if(!modal.classList.contains('show')){
-            // モーダルが閉じていたら開いてからアニメ
             openEffectCardForSpectator(cards[0],cards[1]);
-            setTimeout(()=>playSelectionAnim(G.act.selectedCardIdx), 200);
-          } else {
-            // 既に開いていればそのままアニメ
+            setTimeout(()=>playSelectionAnim(G.act.selectedCardIdx), 300);
+          } else if(!document.querySelector('.ec-card-choice.selected')){
             playSelectionAnim(G.act.selectedCardIdx);
           }
         } else if(!modal.classList.contains('show')){
@@ -2248,7 +2259,9 @@ function checkEffectCardSync(){
       }
     }
   } else if(!effectPhases.includes(G.act.phase)){
-    closeEffectCardModal();
+    // アニメ中は閉じない
+    const _modal=document.getElementById('effectCardModal');
+    if(!_modal.classList.contains('closing')) closeEffectCardModal();
   }
 }
 
@@ -2650,9 +2663,18 @@ function insertPlayerZone(div){
 // ════════════════════════════════════════════
 //  VERSION & CHANGELOG
 // ════════════════════════════════════════════
-const CURRENT_VERSION = 'beta 2.0.3';
+const CURRENT_VERSION = 'beta 2.0.4';
 
 const CHANGELOG = [
+  {
+    version: 'beta 2.0.4',
+    date: '2026-02-27',
+    items: [
+      { text: '選択前にモーダルが消えるバグを修正', highlight: true },
+      { text: 'コインフリップ後に進行不能になるバグを修正', highlight: true },
+      { text: 'もう一回！で次のプレイヤーのターンになるバグを修正', highlight: true },
+    ]
+  },
   {
     version: 'beta 2.0.3',
     date: '2026-02-27',
