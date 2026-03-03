@@ -97,51 +97,51 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 .play-label{font-family:'Bebas Neue',cursive;letter-spacing:0.1em;color:var(--ft);line-height:1;}
 .play-hint{font-family:'Bebas Neue',cursive;color:#888;letter-spacing:0.22em;margin-top:5px;}
 
-/* ── モーダル（completto準拠） ── */
+/* ── モーダル（completto完全準拠） ── */
 #mo{
   position:fixed;inset:0;z-index:200;
-  background:rgba(0,0,0,0.72);
+  background:rgba(0,0,0,0.87);
   backdrop-filter:blur(4px);
   display:flex;align-items:center;justify-content:center;
   opacity:0;pointer-events:none;
   transition:opacity 0.28s;
 }
 #mo.show{opacity:1;pointer-events:auto;}
-#md{
-  background:#161616;border:1px solid #2a2a2a;border-radius:8px;
-  padding:32px 36px;text-align:center;max-width:320px;width:90%;
+#mo .overlay-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:40px 50px;text-align:center;max-width:480px;width:90%;
   transform:translateY(16px) scale(0.97);
   transition:transform 0.28s cubic-bezier(0.22,1,0.36,1);
 }
-#mo.show #md{transform:translateY(0) scale(1);}
-.numletto-logo{text-align:center;margin-bottom:24px;}
+#mo.show .overlay-card{transform:translateY(0) scale(1);}
+.numletto-logo{text-align:center;margin-bottom:28px;}
 .logo-tiles{display:flex;justify-content:center;gap:6px;margin-bottom:14px;}
 .logo-tile{
   width:38px;height:48px;display:flex;align-items:center;justify-content:center;
-  font-family:'Bebas Neue',cursive;font-size:0.85rem;font-weight:600;
-  background:#1a2a3a;border:2px solid #2a4a6a;
+  font-family:'Roboto Mono','Bebas Neue',cursive;font-size:0.85rem;font-weight:600;
+  background:var(--face-down);border:2px solid var(--face-down-border);
   border-radius:5px;color:transparent;
   background-image:repeating-linear-gradient(45deg,transparent,transparent 3px,rgba(255,255,255,0.025) 3px,rgba(255,255,255,0.025) 4px);
   box-shadow:0 2px 8px rgba(0,0,0,0.5);
 }
-.logo-tile.face-up{
-  background:#f5f0e8;border-color:#c8c0a8;
-  color:#0d0d0d;background-image:none;
-}
 .logo-title{
   font-family:'Bebas Neue',cursive;font-size:3.2rem;letter-spacing:10px;
-  color:#e8e8e8;text-shadow:0 0 40px rgba(232,212,77,0.25);line-height:1;margin-bottom:4px;
+  color:var(--accent);text-shadow:0 0 40px rgba(232,212,77,0.35);line-height:1;margin-bottom:4px;
 }
-.logo-sub-mo{font-size:0.6rem;letter-spacing:4px;color:#555;}
+.logo-sub-mo{font-size:0.6rem;letter-spacing:4px;color:var(--muted);}
 .setup-options{display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
 .setup-row{display:flex;justify-content:space-between;align-items:center;gap:12px;}
-.setup-row label{font-size:0.68rem;text-transform:uppercase;letter-spacing:1px;color:#555;white-space:nowrap;}
+.setup-row label{font-size:0.68rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);white-space:nowrap;}
 .setup-row input{
-  background:#1e1e1e;border:1px solid #2a2a2a;color:#e8e8e8;
+  background:var(--panel);border:1px solid var(--border);color:var(--text);
   font-family:'Roboto Mono',monospace;font-size:0.7rem;padding:6px 10px;border-radius:3px;
   outline:none;width:100%;transition:border-color 0.15s;
 }
-.setup-row input:focus{border-color:#e8d44d;}
+.setup-row input:focus{border-color:var(--accent);}
+.btn{font-family:'Roboto Mono',monospace;font-size:0.7rem;letter-spacing:1px;text-transform:uppercase;padding:7px 14px;border-radius:3px;border:1px solid var(--border);cursor:pointer;transition:all 0.15s;background:transparent;color:var(--text);}
+.btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent);}
+.btn.primary{background:var(--accent);color:#000;border-color:var(--accent);font-weight:600;}
+.btn.primary:hover{background:rgba(232,212,77,0.85);}
 
 /* ── サブUI ── */
 #ui-sub{
@@ -175,11 +175,11 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
   <div class="overlay-card" style="max-width:420px;padding-top:36px;">
     <div class="numletto-logo">
       <div class="logo-tiles">
-        <span class="logo-tile face-up">7</span>
         <span class="logo-tile"></span>
-        <span class="logo-tile face-up">42</span>
         <span class="logo-tile"></span>
-        <span class="logo-tile face-up">99</span>
+        <span class="logo-tile"></span>
+        <span class="logo-tile"></span>
+        <span class="logo-tile"></span>
       </div>
       <h1 class="logo-title">NUMLETTO</h1>
       <div class="logo-sub-mo">数字並べ対戦ゲーム</div>
@@ -257,11 +257,47 @@ function setupGo(wrap, card){
     card.style.transform='rotateY(0deg)';
   });
   wrap.addEventListener('click',()=>{
+    if(clicked) return;
     clicked=true;
-    card.style.transition='transform 0.42s cubic-bezier(0.4,0,0.2,1)';
-    card.style.transform='rotateY(180deg)';
-    setTimeout(openModal,280);
+    startWaveFlip();
   });
+}
+
+// ── 対角線ウェーブflip → モーダル表示 ──
+function startWaveFlip(){
+  const wraps = Array.from(document.querySelectorAll('.cw'));
+  // 各カードの左上座標を取得して対角線距離でソート
+  const entries = wraps.map(w=>{
+    const r = w.getBoundingClientRect();
+    const dist = r.left + r.top; // 左上からの対角線距離
+    return {w, dist};
+  });
+  const minDist = Math.min(...entries.map(e=>e.dist));
+  const maxDist = Math.max(...entries.map(e=>e.dist));
+  const range = maxDist - minDist || 1;
+
+  const WAVE_DURATION = 900; // ms: 波が全体を走る時間
+  const FLIP_DUR = 380;
+
+  // ホバー解除・クリックロックを全カードに
+  wraps.forEach(w=>{
+    w.style.pointerEvents='none';
+  });
+
+  entries.forEach(({w, dist})=>{
+    const delay = ((dist - minDist) / range) * WAVE_DURATION;
+    const card = w.querySelector('.card');
+    if(!card) return;
+    setTimeout(()=>{
+      card.style.transition=`transform ${FLIP_DUR}ms cubic-bezier(0.4,0,0.2,1)`;
+      card.style.transform='rotateY(180deg)';
+    }, delay);
+  });
+
+  // 最後のカードがflipし終わったらモーダルを表示
+  setTimeout(()=>{
+    openModal();
+  }, WAVE_DURATION + FLIP_DUR + 80);
 }
 
 // ── モーダル ──
@@ -271,7 +307,36 @@ function openModal(){
   const room=new URLSearchParams(location.search).get('room');
   if(room){ const ri=document.getElementById('roomIdInput'); if(ri&&!ri.value) ri.value=room.toUpperCase(); }
 }
-function closeModal(){ document.getElementById('mo').classList.remove('show'); }
+function closeModal(){
+  document.getElementById('mo').classList.remove('show');
+  // 右下→左上の逆波でカードを戻す
+  const wraps = Array.from(document.querySelectorAll('.cw'));
+  const entries = wraps.map(w=>{
+    const r = w.getBoundingClientRect();
+    return {w, dist: r.left + r.top};
+  });
+  const minDist = Math.min(...entries.map(e=>e.dist));
+  const maxDist = Math.max(...entries.map(e=>e.dist));
+  const range = maxDist - minDist || 1;
+  const WAVE_DURATION = 700;
+  const FLIP_DUR = 320;
+
+  entries.forEach(({w, dist})=>{
+    // 逆順: 遠いほど早く戻る
+    const delay = ((maxDist - dist) / range) * WAVE_DURATION;
+    const card = w.querySelector('.card');
+    if(!card) return;
+    setTimeout(()=>{
+      card.style.transition=`transform ${FLIP_DUR}ms cubic-bezier(0.4,0,0.2,1)`;
+      card.style.transform='rotateY(0deg)';
+    }, delay);
+  });
+
+  // 戻し完了後にpointerEvents復元
+  setTimeout(()=>{
+    wraps.forEach(w=>{ w.style.pointerEvents=''; });
+  }, WAVE_DURATION + FLIP_DUR + 80);
+}
 
 function connectAction(){
   const name = document.getElementById('myNameInput').value.trim();
