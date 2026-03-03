@@ -448,7 +448,7 @@ function build(){
             transition:background 0.18s,color 0.18s,box-shadow 0.18s,text-shadow 0.18s;
           `;
           btn.textContent='PLAY';
-          btn.addEventListener('click', openModal);
+          btn.addEventListener('click', startWaveFlip);
           btn.addEventListener('mouseenter',()=>{
             btn.style.background='var(--accent)'; btn.style.color='var(--ft)'; btn.style.textShadow='none'; btn.style.boxShadow='0 0 28px rgba(232,212,77,0.4),0 4px 20px rgba(0,0,0,0.6)';
             startTitleShuffle();
