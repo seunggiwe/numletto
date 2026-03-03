@@ -4,10 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NUMLETTO — 数字を並べる。ただそれだけ。</title>
+<meta name="description" content="1〜100のタイルを昇順に並べろ。最大6人のリアルタイム対戦。インストール不要、URLを送るだけで今すぐ遊べる。">
 <meta property="og:title" content="NUMLETTO — 数字並べ対戦ゲーム">
-<meta property="og:description" content="数字を並べろ、ただそれだけ。最大6人のリアルタイム対戦。">
+<meta property="og:description" content="1〜100のタイルを昇順に並べろ。最大6人のリアルタイム対戦。インストール不要、URLを送るだけで今すぐ遊べる。">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://seunggiwe.github.io/numeretto/">
 <meta property="og:image" content="https://seunggiwe.github.io/numeretto/ogp.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="ja_JP">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NUMLETTO — 数字並べ対戦ゲーム">
+<meta name="twitter:description" content="1〜100のタイルを昇順に並べろ。最大6人のリアルタイム対戦。インストール不要。">
+<meta name="twitter:image" content="https://seunggiwe.github.io/numeretto/ogp.png">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Noto+Sans+JP:wght@300;400&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -88,50 +97,6 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 .play-label{font-family:'Bebas Neue',cursive;letter-spacing:0.1em;color:var(--ft);line-height:1;}
 .play-hint{font-family:'Bebas Neue',cursive;color:#888;letter-spacing:0.22em;margin-top:5px;}
 
-/* ── モーダル ── */
-#mo{
-  position:fixed;inset:0;z-index:200;
-  background:rgba(0,0,0,0.72);
-  backdrop-filter:blur(6px);
-  display:flex;align-items:center;justify-content:center;
-  opacity:0;pointer-events:none;
-  transition:opacity 0.28s;
-}
-#mo.show{opacity:1;pointer-events:auto;}
-#md{
-  background:var(--fu);border:2px solid var(--fub);border-radius:10px;
-  width:min(380px,88vw);padding:36px 36px 28px;
-  position:relative;
-  transform:translateY(18px) scale(0.97);
-  transition:transform 0.28s cubic-bezier(0.22,1,0.36,1);
-  box-shadow:0 24px 80px rgba(0,0,0,0.7);
-}
-#mo.show #md{transform:translateY(0) scale(1);}
-#mc{
-  position:absolute;top:14px;right:16px;
-  background:none;border:none;font-size:1.3rem;color:#bbb;
-  cursor:pointer;line-height:1;padding:2px 4px;transition:color 0.15s;
-}
-#mc:hover{color:var(--ft);}
-.mt{font-family:'Bebas Neue',cursive;font-size:2rem;letter-spacing:0.18em;color:var(--ft);margin-bottom:4px;line-height:1;}
-.ms{font-size:0.62rem;letter-spacing:0.2em;color:#999;font-weight:300;margin-bottom:28px;}
-.ff{display:flex;flex-direction:column;gap:4px;margin-bottom:16px;}
-.fl{font-size:0.58rem;letter-spacing:0.2em;color:#888;font-weight:300;font-family:'Noto Sans JP',sans-serif;}
-.fi{
-  background:transparent;border:none;border-bottom:1.5px solid #c0b8a8;
-  font-family:'Bebas Neue',cursive;font-size:1.3rem;letter-spacing:0.07em;
-  color:var(--ft);outline:none;transition:border-color 0.2s;width:100%;padding:4px 0;
-}
-.fi:focus{border-color:#888;}
-.fi::placeholder{color:#ccc;font-family:'Noto Sans JP',sans-serif;font-weight:300;font-size:0.72rem;letter-spacing:0.1em;}
-.fi.err{border-color:#e05c4b!important;}
-.fb{
-  width:100%;margin-top:24px;background:var(--ft);color:var(--fu);
-  border:none;font-family:'Bebas Neue',cursive;font-size:1rem;letter-spacing:0.22em;
-  padding:12px;border-radius:3px;cursor:pointer;transition:opacity 0.15s;
-}
-.fb:hover{opacity:0.72;}
-
 /* ── サブUI ── */
 #ui-sub{
   position:fixed;z-index:20;
@@ -158,23 +123,6 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 <body>
 <div id="grain"></div>
 <div id="field"></div>
-
-<div id="mo">
-  <div id="md">
-    <button id="mc" aria-label="閉じる">×</button>
-    <div class="mt">NUMLETTO</div>
-    <div class="ms">名前と合言葉を入力してゲームへ</div>
-    <div class="ff">
-      <span class="fl">名　前</span>
-      <input class="fi" id="nameInput" placeholder="あなたの名前" maxlength="12" autocomplete="off">
-    </div>
-    <div class="ff" style="margin-bottom:0">
-      <span class="fl">合言葉</span>
-      <input class="fi" id="roomInput" placeholder="空欄で新規ルーム" maxlength="20" style="text-transform:uppercase" autocomplete="off">
-    </div>
-    <button class="fb" id="goBtn">ENTRY →</button>
-  </div>
-</div>
 
 <div id="ui-sub">
   <div class="logo-sub">数字を並べる。ただそれだけ。</div>
@@ -235,31 +183,10 @@ function setupGo(wrap, card){
   });
 }
 
-// ── モーダル ──
+// ── PLAY → completto.htmlへ遷移 ──
 function openModal(){
-  document.getElementById('mo').classList.add('show');
-  setTimeout(()=>document.getElementById('nameInput')?.focus(),200);
   const room=new URLSearchParams(location.search).get('room');
-  if(room){const ri=document.getElementById('roomInput');if(ri&&!ri.value)ri.value=room.toUpperCase();}
-}
-function closeModal(){document.getElementById('mo').classList.remove('show');}
-document.getElementById('mc').addEventListener('click',closeModal);
-document.getElementById('mo').addEventListener('click',e=>{if(e.target===document.getElementById('mo'))closeModal();});
-document.getElementById('goBtn').addEventListener('click',goToGame);
-['nameInput','roomInput'].forEach(id=>{
-  document.getElementById(id)?.addEventListener('keydown',e=>{if(e.key==='Enter')goToGame();});
-});
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
-
-function goToGame(){
-  const name=document.getElementById('nameInput')?.value.trim();
-  const room=document.getElementById('roomInput')?.value.trim().toUpperCase();
-  const ni=document.getElementById('nameInput');
-  if(!name){ni?.classList.add('err');ni?.focus();setTimeout(()=>ni?.classList.remove('err'),1500);return;}
-  const p=new URLSearchParams();
-  p.set('name',name);
-  if(room)p.set('room',room);
-  location.href=GAME_URL+'?'+p.toString();
+  location.href = GAME_URL + (room ? '?room='+encodeURIComponent(room) : '');
 }
 
 // ── メイン構築 ──
