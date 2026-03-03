@@ -97,11 +97,18 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 .play-label{font-family:'Bebas Neue',cursive;letter-spacing:0.1em;color:var(--ft);line-height:1;}
 .play-hint{font-family:'Bebas Neue',cursive;color:#888;letter-spacing:0.22em;margin-top:5px;}
 
+/* ── 波flip時: 表面を黒い第3面として表示 ── */
+.cw.wave-flipped .cv{
+  background:#0a0a0a;
+  border-color:#1a1a1a;
+  color:transparent;
+  box-shadow:0 3px 16px rgba(0,0,0,0.8);
+}
+
 /* ── モーダル（completto完全準拠） ── */
 #mo{
   position:fixed;inset:0;z-index:200;
-  background:rgba(0,0,0,0.87);
-  backdrop-filter:blur(4px);
+  background:transparent;
   display:flex;align-items:center;justify-content:center;
   opacity:0;pointer-events:none;
   transition:opacity 0.28s;
@@ -265,39 +272,75 @@ function setupGo(wrap, card){
 
 // ── 対角線ウェーブflip → モーダル表示 ──
 function startWaveFlip(){
-  const wraps = Array.from(document.querySelectorAll('.cw'));
-  // 各カードの左上座標を取得して対角線距離でソート
-  const entries = wraps.map(w=>{
-    const r = w.getBoundingClientRect();
-    const dist = r.left + r.top; // 左上からの対角線距離
-    return {w, dist};
-  });
-  const minDist = Math.min(...entries.map(e=>e.dist));
-  const maxDist = Math.max(...entries.map(e=>e.dist));
-  const range = maxDist - minDist || 1;
+  // シャッフルアニメ中なら完了を待ってから起動
+  if(shuffleTimer !== null){
+    const wait = setInterval(()=>{
+      if(shuffleTimer === null){ clearInterval(wait); _doWaveFlip(); }
+    }, 50);
+    return;
+  }
+  _doWaveFlip();
+}
 
-  const WAVE_DURATION = 900; // ms: 波が全体を走る時間
-  const FLIP_DUR = 380;
+function _doWaveFlip(){
+  const uiSub = document.getElementById('ui-sub');
+  if(uiSub){ uiSub.style.transition='opacity 0.3s'; uiSub.style.opacity='0'; }
+  const playBtn = document.getElementById('playBtn');
+  if(playBtn){ playBtn.style.transition='opacity 0.3s'; playBtn.style.opacity='0'; }
 
-  // ホバー解除・クリックロックを全カードに
-  wraps.forEach(w=>{
-    w.style.pointerEvents='none';
-  });
+  const allWraps   = Array.from(document.querySelectorAll('.cw'));
+  const wraps      = Array.from(document.querySelectorAll('.cw:not(.title-card)'));
+  const titleCards = Array.from(document.querySelectorAll('.cw.title-card'));
 
-  entries.forEach(({w, dist})=>{
-    const delay = ((dist - minDist) / range) * WAVE_DURATION;
+  allWraps.forEach(w=>{ w.style.pointerEvents='none'; });
+
+  const TITLE_FLIP_DUR = 280;
+  const TITLE_INTERVAL = 55;
+  const WAVE_DELAY     = 200;
+  const WAVE_DURATION  = 900;
+  const FLIP_DUR       = 380;
+
+  // ① NUMLETTOを左→右に右めくりで裏へ（180→360、その後0にリセット）
+  titleCards.forEach((w, i)=>{
     const card = w.querySelector('.card');
     if(!card) return;
     setTimeout(()=>{
-      card.style.transition=`transform ${FLIP_DUR}ms cubic-bezier(0.4,0,0.2,1)`;
-      card.style.transform='rotateY(180deg)';
-    }, delay);
+      card.style.transition=`transform ${TITLE_FLIP_DUR}ms cubic-bezier(0.4,0,0.2,1)`;
+      card.style.transform='rotateY(360deg)';
+      // アニメ完了後に0にリセット（次の波で180に持っていくため）
+      setTimeout(()=>{
+        card.style.transition='none';
+        card.style.transform='rotateY(0deg)';
+      }, TITLE_FLIP_DUR + 20);
+    }, i * TITLE_INTERVAL);
   });
 
-  // 最後のカードがflipし終わったらモーダルを表示
+  // ② 裏向き完了後に波スタート
+  const waveStart = titleCards.length * TITLE_INTERVAL + TITLE_FLIP_DUR + WAVE_DELAY;
+
+  const getEntries = list => list.map(w=>{
+    const r = w.getBoundingClientRect();
+    return {w, dist: r.left + r.top};
+  });
+  const allEntries = getEntries([...wraps, ...titleCards]);
+  const minDist = Math.min(...allEntries.map(e=>e.dist));
+  const maxDist = Math.max(...allEntries.map(e=>e.dist));
+  const range = maxDist - minDist || 1;
+
   setTimeout(()=>{
-    openModal();
-  }, WAVE_DURATION + FLIP_DUR + 80);
+    // 全カード（通常+タイトル）を右めくりで黒面へ（0→180）
+    allEntries.forEach(({w, dist})=>{
+      const delay = ((dist - minDist) / range) * WAVE_DURATION;
+      const card = w.querySelector('.card');
+      if(!card) return;
+      setTimeout(()=>{
+        card.style.transition=`transform ${FLIP_DUR}ms cubic-bezier(0.4,0,0.2,1)`;
+        card.style.transform='rotateY(180deg)';
+        w.classList.add('wave-flipped');
+      }, delay);
+    });
+    setTimeout(()=>{ openModal(); }, WAVE_DURATION + FLIP_DUR + 80);
+  }, waveStart);
 }
 
 // ── モーダル ──
@@ -309,33 +352,64 @@ function openModal(){
 }
 function closeModal(){
   document.getElementById('mo').classList.remove('show');
-  // 右下→左上の逆波でカードを戻す
-  const wraps = Array.from(document.querySelectorAll('.cw'));
-  const entries = wraps.map(w=>{
+
+  const allWraps   = Array.from(document.querySelectorAll('.cw'));
+  const wraps      = Array.from(document.querySelectorAll('.cw:not(.title-card)'));
+  const titleCards = Array.from(document.querySelectorAll('.cw.title-card'));
+
+  allWraps.forEach(w=>{ w.style.pointerEvents='none'; });
+
+  const WAVE_DURATION  = 2000; // デバッグ用
+  const FLIP_DUR       = 800;
+  const TITLE_FLIP_DUR = 500;
+  const TITLE_INTERVAL = 120;
+
+  const getEntries = list => list.map(w=>{
     const r = w.getBoundingClientRect();
     return {w, dist: r.left + r.top};
   });
-  const minDist = Math.min(...entries.map(e=>e.dist));
-  const maxDist = Math.max(...entries.map(e=>e.dist));
+  const allEntries = getEntries([...wraps, ...titleCards]);
+  const minDist = Math.min(...allEntries.map(e=>e.dist));
+  const maxDist = Math.max(...allEntries.map(e=>e.dist));
   const range = maxDist - minDist || 1;
-  const WAVE_DURATION = 700;
-  const FLIP_DUR = 320;
 
-  entries.forEach(({w, dist})=>{
-    // 逆順: 遠いほど早く戻る
-    const delay = ((maxDist - dist) / range) * WAVE_DURATION;
+  // ① 左上→右下の波で全カードを右めくりで裏面へ（180→360、リセット）
+  allEntries.forEach(({w, dist})=>{
+    const delay = ((dist - minDist) / range) * WAVE_DURATION;
     const card = w.querySelector('.card');
     if(!card) return;
     setTimeout(()=>{
       card.style.transition=`transform ${FLIP_DUR}ms cubic-bezier(0.4,0,0.2,1)`;
-      card.style.transform='rotateY(0deg)';
+      card.style.transform='rotateY(360deg)';
+      setTimeout(()=>{
+        card.style.transition='none';
+        card.style.transform='rotateY(0deg)';
+        w.classList.remove('wave-flipped');
+      }, FLIP_DUR + 20);
     }, delay);
   });
 
-  // 戻し完了後にpointerEvents復元
+  // ② 波完了後、タイトルカードを左→右に右めくりで表向き（0→180）
+  const afterWave = WAVE_DURATION + FLIP_DUR + 100;
   setTimeout(()=>{
-    wraps.forEach(w=>{ w.style.pointerEvents=''; });
-  }, WAVE_DURATION + FLIP_DUR + 80);
+    titleCards.forEach((w, i)=>{
+      const card = w.querySelector('.card');
+      if(!card) return;
+      setTimeout(()=>{
+        card.style.transition=`transform ${TITLE_FLIP_DUR}ms cubic-bezier(0.4,0,0.2,1)`;
+        card.style.transform='rotateY(180deg)';
+      }, i * TITLE_INTERVAL);
+    });
+
+    const afterTitle = titleCards.length * TITLE_INTERVAL + TITLE_FLIP_DUR + 80;
+    setTimeout(()=>{
+      allWraps.forEach(w=>{ w.style.pointerEvents=''; });
+      const uiSub = document.getElementById('ui-sub');
+      if(uiSub){ uiSub.style.transition='opacity 0.4s'; uiSub.style.opacity='1'; }
+      const playBtn = document.getElementById('playBtn');
+      if(playBtn){ playBtn.style.transition='opacity 0.4s'; playBtn.style.opacity='1'; }
+    }, afterTitle);
+  }, afterWave);
 }
 
 function connectAction(){
