@@ -775,7 +775,6 @@
       <h1 class="logo-title">NUMLETTO</h1>
       <div class="logo-sub">数字並べ対戦ゲーム</div>
     </div>
-    <p style="margin-bottom:24px;color:var(--muted);font-size:0.72rem;line-height:1.7;">1〜100のタイルを昇順に並べろ。<br>戦略と運が交差する数字の格闘技。</p>
     <div class="setup-options" style="gap:12px;">
       <div class="setup-row">
         <label>名 前</label>
@@ -1026,9 +1025,7 @@ async function copyRoomUrl(){
 }
 function shareToLine(){
   const url = getRoomUrl();
-  const text = encodeURIComponent('NUMLETTOで遊ぼう！
-数字並べ対戦ゲーム🎮
-' + url);
+  const text = encodeURIComponent('NUMLETTOで遊ぼう！\n数字並べ対戦ゲーム🎮\n' + url);
   window.open('https://line.me/R/share?text=' + text, '_blank');
 }
 
