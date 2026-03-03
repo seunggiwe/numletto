@@ -97,6 +97,52 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 .play-label{font-family:'Bebas Neue',cursive;letter-spacing:0.1em;color:var(--ft);line-height:1;}
 .play-hint{font-family:'Bebas Neue',cursive;color:#888;letter-spacing:0.22em;margin-top:5px;}
 
+/* ── モーダル（completto準拠） ── */
+#mo{
+  position:fixed;inset:0;z-index:200;
+  background:rgba(0,0,0,0.72);
+  backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;
+  transition:opacity 0.28s;
+}
+#mo.show{opacity:1;pointer-events:auto;}
+#md{
+  background:#161616;border:1px solid #2a2a2a;border-radius:8px;
+  padding:40px 50px;text-align:center;max-width:420px;width:90%;
+  transform:translateY(16px) scale(0.97);
+  transition:transform 0.28s cubic-bezier(0.22,1,0.36,1);
+}
+#mo.show #md{transform:translateY(0) scale(1);}
+.numletto-logo{text-align:center;margin-bottom:24px;}
+.logo-tiles{display:flex;justify-content:center;gap:6px;margin-bottom:14px;}
+.logo-tile{
+  width:38px;height:48px;display:flex;align-items:center;justify-content:center;
+  font-family:'Bebas Neue',cursive;font-size:0.85rem;font-weight:600;
+  background:#1a2a3a;border:2px solid #2a4a6a;
+  border-radius:5px;color:transparent;
+  background-image:repeating-linear-gradient(45deg,transparent,transparent 3px,rgba(255,255,255,0.025) 3px,rgba(255,255,255,0.025) 4px);
+  box-shadow:0 2px 8px rgba(0,0,0,0.5);
+}
+.logo-tile.face-up{
+  background:#f5f0e8;border-color:#c8c0a8;
+  color:#0d0d0d;background-image:none;
+}
+.logo-title{
+  font-family:'Bebas Neue',cursive;font-size:3.2rem;letter-spacing:10px;
+  color:#e8e8e8;text-shadow:0 0 40px rgba(232,212,77,0.25);line-height:1;margin-bottom:4px;
+}
+.logo-sub-mo{font-size:0.6rem;letter-spacing:4px;color:#555;}
+.setup-options{display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
+.setup-row{display:flex;justify-content:space-between;align-items:center;gap:12px;}
+.setup-row label{font-size:0.68rem;text-transform:uppercase;letter-spacing:1px;color:#555;white-space:nowrap;}
+.setup-row input{
+  background:#1e1e1e;border:1px solid #2a2a2a;color:#e8e8e8;
+  font-family:'Roboto Mono',monospace;font-size:0.7rem;padding:6px 10px;border-radius:3px;
+  outline:none;width:100%;transition:border-color 0.15s;
+}
+.setup-row input:focus{border-color:#e8d44d;}
+
 /* ── サブUI ── */
 #ui-sub{
   position:fixed;z-index:20;
@@ -123,6 +169,41 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-seri
 <body>
 <div id="grain"></div>
 <div id="field"></div>
+
+<!-- completto準拠モーダル -->
+<div id="mo">
+  <div id="md">
+    <div class="numletto-logo">
+      <div class="logo-tiles">
+        <span class="logo-tile face-up">7</span>
+        <span class="logo-tile"></span>
+        <span class="logo-tile face-up">42</span>
+        <span class="logo-tile"></span>
+        <span class="logo-tile face-up">99</span>
+      </div>
+      <h1 class="logo-title">NUMLETTO</h1>
+      <div class="logo-sub-mo">数字並べ対戦ゲーム</div>
+    </div>
+    <p style="margin-bottom:20px;color:#555;font-size:0.72rem;line-height:1.7;">1〜100のタイルを昇順に並べろ。<br>戦略と運が交差する数字の格闘技。</p>
+    <div class="setup-options">
+      <div class="setup-row">
+        <label>名 前</label>
+        <input type="text" id="myNameInput" placeholder="あなたの名前" maxlength="12" autocomplete="off"
+          onkeydown="if(event.key==='Enter')connectAction()">
+      </div>
+      <div class="setup-row">
+        <label>合言葉</label>
+        <input type="text" id="roomIdInput" placeholder="ルーム合言葉" autocomplete="off"
+          style="text-transform:uppercase"
+          onkeydown="if(event.key==='Enter')connectAction()">
+      </div>
+    </div>
+    <p style="font-size:0.6rem;color:#555;margin:10px 0 16px;">同じ合言葉を入力した人が同じ部屋に集まります</p>
+    <button id="btnConnect" onclick="connectAction()"
+      style="width:100%;padding:12px;font-size:0.8rem;letter-spacing:2px;background:rgba(232,212,77,0.08);border:1px solid #e8d44d;color:#e8d44d;border-radius:3px;cursor:pointer;font-family:'Bebas Neue',cursive;transition:background 0.15s;">ENTER ROOM</button>
+    <p id="connectError" style="font-size:0.65rem;color:#e05c4b;margin-top:8px;min-height:16px;"></p>
+  </div>
+</div>
 
 <div id="ui-sub">
   <div class="logo-sub">数字を並べる。ただそれだけ。</div>
@@ -183,11 +264,29 @@ function setupGo(wrap, card){
   });
 }
 
-// ── PLAY → completto.htmlへ遷移 ──
+// ── モーダル ──
 function openModal(){
+  document.getElementById('mo').classList.add('show');
+  setTimeout(()=>document.getElementById('myNameInput').focus(), 200);
   const room=new URLSearchParams(location.search).get('room');
-  location.href = GAME_URL + (room ? '?room='+encodeURIComponent(room) : '');
+  if(room){ const ri=document.getElementById('roomIdInput'); if(ri&&!ri.value) ri.value=room.toUpperCase(); }
 }
+function closeModal(){ document.getElementById('mo').classList.remove('show'); }
+
+function connectAction(){
+  const name = document.getElementById('myNameInput').value.trim();
+  const room = document.getElementById('roomIdInput').value.trim().toUpperCase();
+  const errEl = document.getElementById('connectError');
+  if(!name){ errEl.textContent='名前を入力してください'; return; }
+  errEl.textContent='';
+  const p = new URLSearchParams();
+  p.set('name', name);
+  if(room) p.set('room', room);
+  location.href = GAME_URL + '?' + p.toString();
+}
+
+document.getElementById('mo').addEventListener('click', e=>{ if(e.target===document.getElementById('mo')) closeModal(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
 
 // ── メイン構築 ──
 function build(){
