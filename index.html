@@ -270,18 +270,22 @@ function build(){
 
   const vw=window.innerWidth, vh=window.innerHeight;
   const gap=4;
+  const ratio = vw / vh;
 
-  // ── 列数: カード幅を先に決めて列数を逆算、奇数に揃える ──
-  // カード幅の目安（画面幅の約1/12）
-  const wTarget = Math.max(52, Math.round(vw / 12));
-  const h = Math.round(wTarget / 1);
-  // 画面を完全に埋めるのに必要な列数（端まではみ出す分+2）
-  let cols = Math.ceil(vw / (wTarget + gap)) + 2;
-  if(cols % 2 === 0) cols += 1; // 奇数に揃える
-  // カード幅を列数から逆算して均等割り
-  const w = Math.round((vw + gap) / cols - gap);
+  // ── アスペクト比に応じてカードサイズを決定 ──
+  // 列数は奇数固定、カード幅は画面幅から逆算
+  let cols;
+  if(ratio >= 2.0)       cols = 19; // 超横長
+  else if(ratio >= 1.6)  cols = 17; // 横長
+  else if(ratio >= 1.3)  cols = 15; // 標準横長
+  else if(ratio >= 1.0)  cols = 13; // 正方形寄り
+  else if(ratio >= 0.7)  cols = 11; // 縦長（タブレット）
+  else                   cols = 9;  // 縦長（スマホ）
 
-  const rows=Math.ceil(vh/(h+gap))+1;
+  const w = Math.floor((vw + gap) / cols - gap);
+  const h = Math.round(w / 0.8); // 4:5
+
+  const rows=Math.ceil(vh/(h+gap))+3;
   const totalW=cols*(w+gap)-gap;
   const totalH=rows*(h+gap)-gap;
   const ox=(vw-totalW)/2;
@@ -480,7 +484,12 @@ function stopTitleShuffle(){
 
 build();
 requestAnimationFrame(staggerIn);
-window.addEventListener('resize',()=>{build();requestAnimationFrame(staggerIn);});
+
+let resizeTimer = null;
+window.addEventListener('resize', ()=>{
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(()=>{ location.reload(); }, 400);
+});
 </script>
 </body>
 </html>
