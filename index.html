@@ -452,8 +452,9 @@ function build(){
   // グリッド全体を画面中央に配置
   const totalW = cols*(w+gap)-gap;
   const totalH = rows*(h+gap)-gap;
+  const topMargin = 20;
   const ox = Math.round((vw - totalW) / 2);
-  const oy = Math.round((vh - totalH) / 2) - (h + gap);
+  const oy = Math.round((vh - totalH) / 2) - (h + gap) + topMargin;
   const ox2 = ox; // タイトルは常にgrid中央列に配置するのでシフト不要
 
   // ── タイトル行・GOカード行の決定（常に画面中央） ──
